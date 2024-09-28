@@ -8,7 +8,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from config import settings
-from models import Messages
+from models import Messages, ChatGroupSettings
 from utils.Filters import ChatTypeFilter
 from utils.db import create_tables, generate_text
 
@@ -25,6 +25,35 @@ async def start(message: Message):
     ChatTypeFilter(chat_type=[ChatType.GROUP, ChatType.SUPERGROUP]),
     F.text &
     (F.content_type == ContentType.TEXT) &
+    (F.text[0] != '/') &
+    (F.text.lower().startswith('вася'))
+)
+async def answer_chance(message: Message):
+    vasya = 'вася'
+    arr_msg = message.text[len(vasya)+1:].split(' ')
+    print(arr_msg)
+    match arr_msg:
+        case ['']:
+            messages = [msg.text for msg in await Messages.get_messages(message.chat.id)]
+            text = generate_text(messages)
+        case 'шанс', chance:
+            try:
+                chance = int(chance)
+                if chance > 100 or chance < 0:
+                    raise ValueError
+                text = f'Шанс сообщения изменен на {chance}'
+                await ChatGroupSettings.change_answer_chance(message.chat.id, chance)
+            except ValueError:
+                text = 'Шанс должен быть числом от 0 до 100'
+        case _:
+            text = 'Я ничего не понял, что ты хочешь от меня'
+
+    await message.answer(text)
+
+@dp.message(
+    ChatTypeFilter(chat_type=[ChatType.GROUP, ChatType.SUPERGROUP]),
+    F.text &
+    (F.content_type == ContentType.TEXT) &
     F.text[0] != '/'
 )
 async def echo(message: Message):
@@ -32,10 +61,10 @@ async def echo(message: Message):
         return
     await Messages.insert_message(message.chat.id, message.text)
 
-    if random.randint(0, 100) <= 20:
+    chance = (await ChatGroupSettings.get_chance(message.chat.id)).answer_chance
+    if random.randint(1, 100) <= chance:
         messages = [msg.text for msg in await Messages.get_messages(message.chat.id)]
         text = generate_text(messages)
-        print(f'!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! {text}')
         await message.answer(text)
 
 
