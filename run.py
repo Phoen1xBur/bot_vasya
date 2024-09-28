@@ -23,7 +23,7 @@ async def start(message: Message):
 
 @dp.message(
     ChatTypeFilter(chat_type=[ChatType.GROUP, ChatType.SUPERGROUP]),
-    F.text &
+    F.text & (F.text is not None) &
     F.text[0] != '/'
 )
 async def echo(message: Message):
