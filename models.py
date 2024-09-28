@@ -20,6 +20,6 @@ class Messages(Base):
     @staticmethod
     async def get_messages(telegram_channel_id: int):
         async with async_session_factory() as session:
-            query = select(Messages)
+            query = select(Messages).where(Messages.telegram_chat_id == telegram_channel_id)
             result = await session.execute(query)
             return result.scalars().all()
