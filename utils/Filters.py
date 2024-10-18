@@ -13,3 +13,16 @@ class ChatTypeFilter(BaseFilter):
             return message.chat.type == self.chat_type
         else:
             return message.chat.type in self.chat_type
+
+
+class BotNameFilter(BaseFilter):
+    def __init__(self, bot_names: Union[str, tuple]):
+        self.bot_names = bot_names
+
+    async def __call__(self, message: Message) -> bool:
+        try:
+            return message.text.lower().split()[0] in self.bot_names
+        except IndexError:
+            return False
+        except AttributeError:
+            return False
