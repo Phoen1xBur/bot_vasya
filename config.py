@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     DB_NAME: str
     DB_USER: str
     DB_PASS: str
+    API_ID: str
+    API_HASH: str
 
     @property
     def BOT_NAMES(self) -> tuple:

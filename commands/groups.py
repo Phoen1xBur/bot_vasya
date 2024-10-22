@@ -1,13 +1,16 @@
 import random
+import re
 
 from aiogram.filters import Command
 from aiogram.enums import ChatType, ContentType, ParseMode
 from aiogram import Router, F
 from aiogram.types import Message, URLInputFile
+from pyrogram import enums
 
 from commands import func
 from config import settings
 from models import Messages, ChatGroupSettings
+from run import app
 from utils.Filters import ChatTypeFilter, BotNameFilter
 from utils.answer_type import AnswerType
 from utils.db import generate_text
@@ -61,6 +64,21 @@ async def answer_by_bot_name(message: Message):
         case 'выбери', *words:
             answer_type = AnswerType.Text
             answer = func.choice(words)
+        case 'кто', *words:
+            answer_type = AnswerType.Text
+            members = []
+            async with app:
+                async for member in app.get_chat_members(message.chat.id):
+                    if not member.user.is_bot:
+                        members.append(member.user)
+            member = random.choice(members)
+            first_name = member.first_name.replace('<', '').replace('>', '')
+            if not first_name:
+                if member.username:
+                    first_name = member.username
+                else:
+                    first_name = 'ОН'
+            answer = f'Я думаю <a href="tg://user?id={member.id}">{first_name}</a> ' + ' '.join(words)
         case 'кот', *text:
             answer_type = AnswerType.Photo
             url = 'https://cataas.com/cat'
@@ -75,7 +93,7 @@ async def answer_by_bot_name(message: Message):
     # TODO: Переделать в будущем на message.chat.do(action, *param)
     match answer_type:
         case AnswerType.Text:
-            await message.answer(answer)
+            await message.answer(answer, parse_mode=ParseMode.HTML)
         case AnswerType.Animation:
             await message.answer_animation(animation=animation, caption=answer)
         case AnswerType.Photo:
