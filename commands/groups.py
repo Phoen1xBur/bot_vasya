@@ -9,6 +9,7 @@ from commands import func
 from config import settings
 from models import Messages, ChatGroupSettings
 from utils.Filters import ChatTypeFilter, BotNameFilter
+from utils.answer_type import AnswerType
 from utils.db import generate_text
 
 
@@ -24,7 +25,9 @@ help_text = """<b>Список команд:</b>
 
 <b>• Вася кот —</b> отправит картинку  котика
 
-<b>• Вася кот [текст сообщения] —</b>  отправит картинку котика с текстом"""
+<b>• Вася кот [текст сообщения] —</b>  отправит картинку котика с текстом
+
+<b>• Вася ответь [текст сообщения] —</b> ответит да/нет"""
 
 
 @router_groups.message(Command('help'))
@@ -39,32 +42,48 @@ async def get_help(message):
     & (F.content_type == ContentType.TEXT)
     & (F.text[0] != '/')
 )
-async def answer_chance(message: Message):
+async def answer_by_bot_name(message: Message):
     arr_msg = message.text.split()[1:]
-    print(arr_msg)
-    answer = None
-    photo = None
     match arr_msg:
         case []:
+            answer_type = AnswerType.Text
             messages = [msg.text for msg in await Messages.get_messages(message.chat.id)]
             answer = generate_text(messages)
         case 'шанс', chance:
+            answer_type = AnswerType.Text
             answer = await func.set_chance(message, chance)
+        case 'ответь', 'гиф', *_:
+            answer_type = AnswerType.Animation
+            animation, answer = await func.yesno()
+        case 'ответь', *_:
+            answer_type = AnswerType.Text
+            animation, answer = await func.yesno()
         case 'выбери', *words:
+            answer_type = AnswerType.Text
             answer = func.choice(words)
         case 'кот', *text:
+            answer_type = AnswerType.Photo
             url = 'https://cataas.com/cat'
             if text:
                 url = 'https://cataas.com/cat/says/' + ' '.join(text) + '?fontSize=50&fontColor=white'
             photo = URLInputFile(url)
             answer = 'Держи котика'
         case _:
+            answer_type = AnswerType.Text
             answer = 'Я ничего не понял, что ты хочешь от меня'
 
-    if photo:
-        await message.answer_photo(photo, answer)
-    else:
-        await message.answer(answer)
+    # TODO: Переделать в будущем на message.chat.do(action, *param)
+    match answer_type:
+        case AnswerType.Text:
+            await message.answer(answer)
+        case AnswerType.Animation:
+            await message.answer_animation(animation=animation, caption=answer)
+        case AnswerType.Photo:
+            await message.answer_photo(photo=photo, caption=answer)
+        # case AnswerType.Video:
+        #     await message.answer_video(video=video, caption=answer)
+        case _:
+            pass
 
 
 @router_groups.message(
@@ -74,9 +93,10 @@ async def answer_chance(message: Message):
     F.text[0] != '/'
 )
 async def echo(message: Message):
-    if message.text is None:
+    if message.text is None or message.via_bot:
         return
-    await Messages.insert_message(message.chat.id, message.text)
+
+    await Messages.insert_message(message.chat.id, message.text.replace('@', ''))
 
     chance = (await ChatGroupSettings.get_chance(message.chat.id)).answer_chance
     if random.randint(1, 100) <= chance:

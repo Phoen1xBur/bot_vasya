@@ -1,6 +1,7 @@
 from aiogram.types import Message
 from random import random
 from models import ChatGroupSettings
+import aiohttp
 
 
 async def set_chance(message: Message, chance: int):
@@ -35,3 +36,21 @@ def choice(words):
     answer = ' '.join(words[:index_or] if random() < .5 else words[index_or + 1:])
 
     return answer
+
+
+async def yesno() -> tuple:
+    url = 'https://yesno.wtf/api'
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            json = await response.json()
+    animation, answer_en = json['image'], json['answer']
+    match answer_en:
+        case 'yes':
+            answer_ru = 'Да'
+        case 'no':
+            answer_ru = 'Нет'
+        case 'maybe':
+            answer_ru = 'Может быть'
+        case _:
+            answer_ru = 'Спроси позже...'
+    return animation, answer_ru
