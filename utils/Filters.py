@@ -21,7 +21,7 @@ class BotNameFilter(BaseFilter):
 
     async def __call__(self, message: Message) -> bool:
         try:
-            return message.text.lower().split()[0] in self.bot_names
+            return message.text.casefold().split()[0] in self.bot_names
         except IndexError:
             return False
         except AttributeError:

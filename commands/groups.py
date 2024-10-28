@@ -1,11 +1,12 @@
 import random
 import re
 
-from aiogram.filters import Command
+import aiogram
+from aiogram import Router, F, html
+from aiogram.filters import Command, IS_ADMIN
+from aiogram.filters.chat_member_updated import ChatMemberUpdated, ChatMemberUpdatedFilter, JOIN_TRANSITION
 from aiogram.enums import ChatType, ContentType, ParseMode
-from aiogram import Router, F
 from aiogram.types import Message, URLInputFile
-from pyrogram import enums
 
 from commands import func
 from config import settings
@@ -40,6 +41,39 @@ async def get_help(message):
     await message.answer(help_text, parse_mode=ParseMode.HTML)
 
 
+@router_groups.my_chat_member(
+    ChatMemberUpdatedFilter(
+        member_status_changed=JOIN_TRANSITION
+    )
+)
+async def bot_invite_chat(event: ChatMemberUpdated):
+    await event.answer(f'Всем привет, спасибо что пригласили меня в {event.new_chat_member.chat.title}')
+
+
+@router_groups.my_chat_member(
+    ChatMemberUpdatedFilter(
+        member_status_changed=JOIN_TRANSITION
+    )
+)
+async def new_member(event: ChatMemberUpdated):
+    await event.answer(
+        f'Привет, {event.new_chat_member.user.mention_html()}!\n'
+        f'Добро пожаловать в {event.new_chat_member.chat.title}'
+    )
+
+
+@router_groups.message(F.migrate_to_chat_id)
+async def group_to_supegroup_migration(message: Message, bot: aiogram.Bot):
+    # TODO: Группа изменилась на супергруппу и изменила ID, в БД нужно обновить ID
+    pass
+    # await bot.send_message(
+    #     message.migrate_to_chat_id,
+    #     f"Group upgraded to supergroup.\n"
+    #     f"Old ID: {html.code(message.chat.id)}\n"
+    #     f"New ID: {html.code(message.migrate_to_chat_id)}"
+    # )
+
+
 @router_groups.message(
     ChatTypeFilter(chat_type=[ChatType.GROUP, ChatType.SUPERGROUP]),
     BotNameFilter(bot_names=settings.BOT_NAMES),
@@ -54,7 +88,7 @@ async def answer_by_bot_name(message: Message):
             answer_type = AnswerType.Text
             messages = [msg.text for msg in await Messages.get_messages(message.chat.id)]
             answer = generate_text(messages)
-        case 'шанс', chance:
+        case 'шанс', chance if IS_ADMIN():
             answer_type = AnswerType.Text
             answer = await func.set_chance(message, chance)
         case 'ответь', 'гиф', *_:
@@ -68,19 +102,13 @@ async def answer_by_bot_name(message: Message):
             answer = func.choice(words)
         case 'кто', *words:
             answer_type = AnswerType.Text
-            members = []
+            members: list[aiogram.types.User] = []
             async with app:
                 async for member in app.get_chat_members(message.chat.id):
                     if not member.user.is_bot:
                         members.append(member.user)
-            member = random.choice(members)
-            first_name = member.first_name.replace('<', '').replace('>', '')
-            if not first_name:
-                if member.username:
-                    first_name = member.username
-                else:
-                    first_name = 'ОН'
-            answer = f'Я думаю <a href="tg://user?id={member.id}">{first_name}</a> ' + ' '.join(words)
+            member: aiogram.types.User = random.choice(members)
+            answer = f'Я думаю {member.mention_html()} ' + ' '.join(words)
         case 'кот', *text:
             answer_type = AnswerType.Photo
             url = 'https://cataas.com/cat'
