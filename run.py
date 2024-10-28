@@ -37,6 +37,7 @@ async def on_startup():
     )
 
     await bot.set_my_commands(settings.MY_COMMANDS)
+    bot.default.parse_mode = 'HTML'
     await dp.start_polling(bot)
 
     # bot_pyrogram = await asyncio.create_task(app.run())

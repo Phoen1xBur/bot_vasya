@@ -1,7 +1,41 @@
-from aiogram.types import Message
+import pyrogram.errors
+from aiogram.types import Message, ChatMemberUpdated
 from random import random
-from models import ChatGroupSettings
+
+from pyrogram.enums import ChatMemberStatus
+
+from models import TelegramChatOrm, UserOrm, GroupUserOrm
 import aiohttp
+
+from run import app
+
+MEMBER_TYPE_ADMIN = (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR)
+
+
+async def update_users(event: ChatMemberUpdated):
+    async with app:
+        async for member in app.get_chat_members(event.chat.id):
+            if member.user.is_bot:
+                continue
+            await UserOrm.insert_user(member.user.id)
+            await GroupUserOrm.insert_group_user(member.user.id, event.chat.id, chat_member_status=member.status)
+
+
+async def update_user(event: ChatMemberUpdated):
+    async with app:
+        try:
+            member = await app.get_chat_member(event.chat.id, event.new_chat_member.user.id)
+        except pyrogram.errors.bad_request_400.UserNotParticipant:
+            # Пользователь ушел с группы - меняем статус на Left
+            await GroupUserOrm.insert_group_user(
+                event.new_chat_member.user.id, event.chat.id,
+                chat_member_status=ChatMemberStatus.LEFT
+            )
+            return
+    if member.user.is_bot:
+        return
+    await UserOrm.insert_user(member.user.id)
+    await GroupUserOrm.insert_group_user(member.user.id, event.chat.id, chat_member_status=member.status)
 
 
 async def set_chance(message: Message, chance: int):
@@ -12,7 +46,7 @@ async def set_chance(message: Message, chance: int):
         if chance > 100 or chance < 0:
             raise ValueError
         answer = f'Шанс сообщения изменен на {chance}'
-        await ChatGroupSettings.change_answer_chance(message.chat.id, chance)
+        await TelegramChatOrm.change_answer_chance(message.chat.id, chance)
     except ValueError:
         answer = 'Шанс должен быть числом от 0 до 100'
 
