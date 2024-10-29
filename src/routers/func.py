@@ -4,10 +4,10 @@ from random import random
 
 from pyrogram.enums import ChatMemberStatus
 
-from src.models import TelegramChatOrm, UserOrm, GroupUserOrm
+from models import TelegramChatOrm, UserOrm, GroupUserOrm
 import aiohttp
 
-from src.run import app
+from run import app
 
 MEMBER_TYPE_ADMIN = (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR)
 

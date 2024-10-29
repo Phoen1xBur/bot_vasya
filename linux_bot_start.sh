@@ -1,2 +1,2 @@
 #!/bin/bash
-.venv/bin/python src/run.py
+venv/bin/python src/run.py

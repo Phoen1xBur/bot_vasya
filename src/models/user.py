@@ -1,4 +1,4 @@
-from src.utils.enums import Rank
+from utils.enums import Rank
 
 from .imports import *
 
