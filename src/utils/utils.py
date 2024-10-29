@@ -2,14 +2,6 @@ import random
 
 import markovify
 
-from database import sync_engine, Base
-
-
-def create_tables():
-    # Base.metadata.drop_all(bind=sync_engine)
-    Base.metadata.create_all(bind=sync_engine)
-    # Base.metadata.reflect(bind=sync_engine, extend_existing=True)
-
 
 def generate_text(messages: list[str]) -> str:
     if messages:

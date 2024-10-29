@@ -4,21 +4,32 @@ from random import random
 
 from pyrogram.enums import ChatMemberStatus
 
-from models import TelegramChatOrm, UserOrm, GroupUserOrm
+from src.models import TelegramChatOrm, UserOrm, GroupUserOrm
 import aiohttp
 
-from run import app
+from src.run import app
 
 MEMBER_TYPE_ADMIN = (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR)
 
 
-async def update_users(event: ChatMemberUpdated):
+async def get_group_user(message: Message):
+    group_user: GroupUserOrm = await GroupUserOrm.get_group_user(message.from_user.id, message.chat.id)
+    if not group_user:
+        await TelegramChatOrm.insert_or_update_telegram_chat(message.chat.id)
+        await update_users(message)
+        return await GroupUserOrm.get_group_user(message.from_user.id, message.chat.id)
+    return group_user
+
+
+async def update_users(event: ChatMemberUpdated | Message):
     async with app:
         async for member in app.get_chat_members(event.chat.id):
             if member.user.is_bot:
                 continue
-            await UserOrm.insert_user(member.user.id)
-            await GroupUserOrm.insert_group_user(member.user.id, event.chat.id, chat_member_status=member.status)
+            await UserOrm.insert_or_update_user(member.user.id)
+            await GroupUserOrm.insert_or_update_group_user(
+                member.user.id, event.chat.id, chat_member_status=member.status
+            )
 
 
 async def update_user(event: ChatMemberUpdated):
@@ -27,15 +38,15 @@ async def update_user(event: ChatMemberUpdated):
             member = await app.get_chat_member(event.chat.id, event.new_chat_member.user.id)
         except pyrogram.errors.bad_request_400.UserNotParticipant:
             # Пользователь ушел с группы - меняем статус на Left
-            await GroupUserOrm.insert_group_user(
+            await GroupUserOrm.insert_or_update_group_user(
                 event.new_chat_member.user.id, event.chat.id,
                 chat_member_status=ChatMemberStatus.LEFT
             )
             return
     if member.user.is_bot:
         return
-    await UserOrm.insert_user(member.user.id)
-    await GroupUserOrm.insert_group_user(member.user.id, event.chat.id, chat_member_status=member.status)
+    await UserOrm.insert_or_update_user(member.user.id)
+    await GroupUserOrm.insert_or_update_group_user(member.user.id, event.chat.id, chat_member_status=member.status)
 
 
 async def set_chance(message: Message, chance: int):

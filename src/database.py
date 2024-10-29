@@ -1,9 +1,7 @@
-import asyncio
-
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy import create_engine
-from config import settings
+from src.config import settings
 
 echo = True
 
@@ -22,13 +20,7 @@ async_session_factory = async_sessionmaker(async_engine)
 
 
 class Base(DeclarativeBase):
-    # __table_args__ = (
-    #     {
-    #         "autoload_with": sync_engine,
-    #         "extend_existing": True,
-    #     },
-    # )
-    pass
+    __table_args__ = {'extend_existing': True}
 
 # Sync variant
 # with engine.connect() as conn:

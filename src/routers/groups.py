@@ -8,12 +8,10 @@ from aiogram.filters.chat_member_updated import ChatMemberUpdated, ChatMemberUpd
 from aiogram.enums import ChatType, ContentType, ParseMode
 from aiogram.types import Message, URLInputFile
 
-from commands import func
+from routers import func
 from config import settings
 from models import MessageOrm, TelegramChatOrm, GroupUserOrm
-from utils.Filters import ChatTypeFilter, BotNameFilter
-from utils.answer_type import AnswerType
-from utils.db import generate_text
+from utils import ChatTypeFilter, BotNameFilter, AnswerType, generate_text
 
 router_groups = Router()
 
@@ -34,6 +32,11 @@ help_text = """<b>Список команд:</b>
 <b>• Вася кто [текст] —</b> выберет рандомного участника чата"""
 
 
+@router_groups.message(Command('start'))
+async def start(message: Message):
+    await message.answer('Привет!')
+
+
 @router_groups.message(Command('help'))
 async def get_help(message):
     await message.answer(help_text, parse_mode=ParseMode.HTML)
@@ -45,7 +48,7 @@ async def get_help(message):
     )
 )
 async def bot_invite_chat(event: ChatMemberUpdated):
-    await TelegramChatOrm.insert_telegram_chat(event.chat.id)
+    await TelegramChatOrm.insert_or_update_telegram_chat(event.chat.id)
     await func.update_users(event)
     await event.answer(f'Всем привет, спасибо что пригласили меня в {html.quote(event.chat.title)}\n'
                        f'Для полноценного общения, выдайте мне права администратора группы')
@@ -90,7 +93,8 @@ async def group_to_supegroup_migration(message: MessageOrm, bot: aiogram.Bot):
 )
 async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
     arr_msg = message.text.split()[1:]
-    group_user: GroupUserOrm = await GroupUserOrm.get_group_user(message.from_user.id, message.chat.id)
+    group_user: GroupUserOrm = await func.get_group_user(message)
+
     match arr_msg:
         case []:
             answer_type = AnswerType.Text
@@ -136,7 +140,7 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
             answer = 'Держи котика'
         case _:
             answer_type = AnswerType.Text
-            answer = 'Я ничего не понял, что ты хочешь от меня'
+            answer = 'Я ничего не понял, что ты хочешь от меня\nМожешь написать /help@vasya_fun_bot для справки'
 
     # TODO: Переделать в будущем на message.chat.do(action, *param)
     match answer_type:
@@ -164,10 +168,9 @@ async def echo(message: Message):
     if message.text is None or message.via_bot:
         return
 
-    chat_group = await GroupUserOrm.get_group_user(message.from_user.id, message.chat.id)
-    if chat_group is None:
-        return
-    await MessageOrm.insert_message(chat_group.id, message.text.replace('@', ''))
+    group_user: GroupUserOrm = await func.get_group_user(message)
+
+    await MessageOrm.insert_message(group_user.id, message.text.replace('@', ''))
 
     chance = redis.get(f'tg_chat_chance:{message.chat.id}')
     if chance is None:

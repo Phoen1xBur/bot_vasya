@@ -1,4 +1,4 @@
 /.venv/
 /.idea/
 /.env
-/stupid_vasya_bot.session
+/src/vasya_fun_bot.session
