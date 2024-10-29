@@ -41,14 +41,11 @@ async def update_user(event: ChatMemberUpdated):
 async def set_chance(message: Message, chance: int):
     answer = 'Непредвиденная ошибка. Обратитесь в тех. поддержку'
 
-    try:
-        chance = int(chance)
-        if chance > 100 or chance < 0:
-            raise ValueError
-        answer = f'Шанс сообщения изменен на {chance}'
-        await TelegramChatOrm.change_answer_chance(message.chat.id, chance)
-    except ValueError:
-        answer = 'Шанс должен быть числом от 0 до 100'
+    chance = int(chance)
+    if chance > 100 or chance < 0:
+        raise ValueError('Шанс должен быть числом от 0 до 100')
+    answer = f'Шанс сообщения изменен на {chance}'
+    await TelegramChatOrm.change_answer_chance(message.chat.id, chance)
 
     return answer
 

@@ -22,6 +22,12 @@ async_session_factory = async_sessionmaker(async_engine)
 
 
 class Base(DeclarativeBase):
+    # __table_args__ = (
+    #     {
+    #         "autoload_with": sync_engine,
+    #         "extend_existing": True,
+    #     },
+    # )
     pass
 
 # Sync variant

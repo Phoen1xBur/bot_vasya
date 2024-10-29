@@ -11,11 +11,13 @@ class Settings(BaseSettings):
     DB_PASS: str
     API_ID: str
     API_HASH: str
+    REDIS_HOST: str
+    REDIS_PORT: int
 
     @property
     def BOT_NAMES(self) -> tuple:
-        # return 'вася', 'вачя'
-        return 'вв', 'в'
+        return 'вася', 'вачя'
+        # return 'вв', 'в'
 
     @property
     def MY_COMMANDS(self) -> list[BotCommand]:

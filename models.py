@@ -151,6 +151,24 @@ class GroupUserOrm(Base):
             res = await session.execute(group_user)
             return res.scalars().one_or_none()
 
+    @staticmethod
+    async def get_groups_user_by_telegram_chat_id(tg_chat_id: int) -> list["GroupUserOrm"]:
+        async with async_session_factory() as session:
+            groups_user = (
+                select(GroupUserOrm)
+                .filter(
+                    GroupUserOrm.telegram_chat_id == tg_chat_id,
+                    GroupUserOrm.chat_member_status.notin_(
+                        (
+                            ChatMemberStatus.BANNED,
+                            ChatMemberStatus.LEFT,
+                        )
+                    )
+                )
+            )
+            res = await session.execute(groups_user)
+            return res.scalars().all()
+
     async def set_money(self, money: int):
         async with async_session_factory() as session:
             self.money = money
@@ -164,10 +182,12 @@ class GroupUserOrm(Base):
 
 class MessageOrm(Base):
     __tablename__ = 'message'
+
     id: Mapped[int] = mapped_column(primary_key=True)
     group_user_id: Mapped[int] = mapped_column(ForeignKey('group_user.id', ondelete='CASCADE'), index=True)
     group_user: Mapped["GroupUserOrm"] = relationship()
     text: Mapped[str]
+    # created_at: Mapped[datetime] = mapped_column(default=datetime.now)
 
     @staticmethod
     async def insert_message(group_user_id: int, text: str):

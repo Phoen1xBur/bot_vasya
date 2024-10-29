@@ -1,5 +1,5 @@
 import asyncio
-import logging
+import redis as redis_package
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
@@ -22,6 +22,8 @@ app = Client(
     settings.API_ID,
     settings.API_HASH
 )
+
+redis = redis_package.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, decode_responses=True)
 
 
 @dp.message(Command('start'))

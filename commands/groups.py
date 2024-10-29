@@ -1,21 +1,19 @@
 import random
-import re
+from run import redis
 
 import aiogram
 from aiogram import Router, F, html
-from aiogram.filters import Command, IS_ADMIN
+from aiogram.filters import Command
 from aiogram.filters.chat_member_updated import ChatMemberUpdated, ChatMemberUpdatedFilter, JOIN_TRANSITION
 from aiogram.enums import ChatType, ContentType, ParseMode
 from aiogram.types import Message, URLInputFile
 
 from commands import func
 from config import settings
-from models import MessageOrm, TelegramChatOrm, GroupUserOrm, UserOrm
-from run import app
+from models import MessageOrm, TelegramChatOrm, GroupUserOrm
 from utils.Filters import ChatTypeFilter, BotNameFilter
 from utils.answer_type import AnswerType
 from utils.db import generate_text
-from utils.enums import Rank
 
 router_groups = Router()
 
@@ -90,7 +88,7 @@ async def group_to_supegroup_migration(message: MessageOrm, bot: aiogram.Bot):
     & (F.content_type == ContentType.TEXT)
     & (F.text[0] != '/')
 )
-async def answer_by_bot_name(message: Message):
+async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
     arr_msg = message.text.split()[1:]
     group_user: GroupUserOrm = await GroupUserOrm.get_group_user(message.from_user.id, message.chat.id)
     match arr_msg:
@@ -101,7 +99,12 @@ async def answer_by_bot_name(message: Message):
         case 'шанс', *chance:
             answer_type = AnswerType.Text
             if group_user.chat_member_status in func.MEMBER_TYPE_ADMIN:
-                answer = await func.set_chance(message, chance[0] if len(chance) > 0 else -1)
+                try:
+                    chance = chance[0] if len(chance) > 0 else -1
+                    answer = await func.set_chance(message, chance)
+                    redis.set(f'tg_chat_chance:{message.chat.id}', chance, ex=120)
+                except ValueError as e:
+                    answer = e.__str__()
             else:
                 answer = 'Эта привилегия доступна только для администраторов группы'
         case 'ответь', 'гиф', *_:
@@ -113,18 +116,17 @@ async def answer_by_bot_name(message: Message):
         case 'выбери', *words:
             answer_type = AnswerType.Text
             answer = func.choice(words)
+        case 'вероятность', *words:
+            answer_type = AnswerType.Text
+            user_url = message.from_user.mention_html()
+            text = ' '.join(words).replace('Я', user_url).replace('я', user_url)
+            answer = f'Вероятность {text}: {random.randint(0, 100)}%'
         case 'кто', *words:
             answer_type = AnswerType.Text
-            # TODO: На данный момент не работает. В любом случае переделать на связку с БД
-            members = []
-            async with app:
-                async for member in app.get_chat_members(message.chat.id):
-                    if not member.user.is_bot:
-                        members.append(member.user)
-            member = random.choice(members)
-            print(member)
-            print(member.fullname)
-            answer = f'Я думаю {member.mention_html()} ' + ' '.join(words)
+            members = await GroupUserOrm.get_groups_user_by_telegram_chat_id(message.chat.id)
+            random_member: GroupUserOrm = random.choice(members)
+            member = await bot.get_chat_member(random_member.telegram_chat_id, random_member.user_id)
+            answer = f'Я думаю {member.user.mention_html()} ' + ' '.join(words)
         case 'кот', *text:
             answer_type = AnswerType.Photo
             url = 'https://cataas.com/cat'
@@ -148,6 +150,8 @@ async def answer_by_bot_name(message: Message):
         #     await message.answer_video(video=video, caption=answer)
         case _:
             pass
+    print(message.text)
+    print(answer)
 
 
 @router_groups.message(
@@ -161,10 +165,15 @@ async def echo(message: Message):
         return
 
     chat_group = await GroupUserOrm.get_group_user(message.from_user.id, message.chat.id)
+    if chat_group is None:
+        return
     await MessageOrm.insert_message(chat_group.id, message.text.replace('@', ''))
 
-    chance = (await TelegramChatOrm.get_chance(message.chat.id)).answer_chance
-    if random.randint(1, 100) <= chance:
+    chance = redis.get(f'tg_chat_chance:{message.chat.id}')
+    if chance is None:
+        chance = (await TelegramChatOrm.get_chance(message.chat.id)).answer_chance
+        redis.set(f'tg_chat_chance:{message.chat.id}', chance, ex=120)
+    if random.randint(1, 100) <= int(chance):
         messages = [msg.text for msg in await MessageOrm.get_messages(message.chat.id)]
         text = generate_text(messages)
         await message.answer(text)
