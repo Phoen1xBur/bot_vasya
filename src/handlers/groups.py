@@ -2,94 +2,39 @@ import random
 from run import redis
 
 import aiogram
-from aiogram import Router, F, html
-from aiogram.filters import Command
-from aiogram.filters.chat_member_updated import ChatMemberUpdated, ChatMemberUpdatedFilter, JOIN_TRANSITION
-from aiogram.enums import ChatType, ContentType, ParseMode
+from aiogram import Router, F
 from aiogram.types import Message, URLInputFile
 
-from routers import func
+from . import func
 from config import settings
 from models import MessageOrm, TelegramChatOrm, GroupUserOrm
-from utils import ChatTypeFilter, BotNameFilter, AnswerType, generate_text
+from utils.filters import ChatTypeFilter, MessageTypeFilter, BotNameFilter
+from utils.enums import AnswerType, ChatType, ContentType
+from utils.utils import generate_text
 
-router_groups = Router()
-
-
-# https://core.telegram.org/bots/api#html-style
-help_text = """<b>Список команд:</b>
-
-<b>• Вася шанс [от 0 до 100] —</b> изменит шанс отправки сообщения
-
-<b>• Вася выбери [значение 1 или значение 2] —</b> выберет одно из предложенного 
-
-<b>• Вася кот —</b> отправит картинку  котика
-
-<b>• Вася кот [текст сообщения] —</b>  отправит картинку котика с текстом
-
-<b>• Вася ответь [текст сообщения] / Вася ответь гиф [текст сообщения] ——</b> ответит да/нет с гифкой или без 
-
-<b>• Вася кто [текст] —</b> выберет рандомного участника чата"""
-
-
-@router_groups.message(Command('start'))
-async def start(message: Message):
-    await message.answer('Привет!')
-
-
-@router_groups.message(Command('help'))
-async def get_help(message):
-    await message.answer(help_text, parse_mode=ParseMode.HTML)
-
-
-@router_groups.my_chat_member(
-    ChatMemberUpdatedFilter(
-        member_status_changed=JOIN_TRANSITION
-    )
+router = Router(name=__name__)
+router.message.filter(
+    # События только из:
+    # Тип чата: группа/супергруппа
+    ChatTypeFilter(
+        ChatType.GROUP,
+        ChatType.SUPERGROUP,
+    ),
+    # Тип сообщения: ТЕКСТ
+    MessageTypeFilter(
+        ContentType.TEXT,
+    ),
+    # Пока не работает: TypeError: unsupported callable
+    # Сообщение сгенерированное НЕ ботом
+    # not F.via_bot,
+    # Тип пересылки сообщения: Отсутствует
+    # F.forward_origin is None
 )
-async def bot_invite_chat(event: ChatMemberUpdated):
-    await TelegramChatOrm.insert_or_update_telegram_chat(event.chat.id)
-    await func.update_users(event)
-    await event.answer(f'Всем привет, спасибо что пригласили меня в {html.quote(event.chat.title)}\n'
-                       f'Для полноценного общения, выдайте мне права администратора группы')
 
 
-@router_groups.chat_member(
-    ChatMemberUpdatedFilter(
-        member_status_changed=JOIN_TRANSITION
-    )
-)
-async def new_member(event: ChatMemberUpdated):
-    await func.update_user(event)
-    await event.answer(
-        f'Привет, {event.new_chat_member.user.mention_html()}!\n'
-        f'Добро пожаловать в {event.chat.title}'
-    )
-
-
-@router_groups.chat_member()
-async def change_member(event: ChatMemberUpdated):
-    await func.update_user(event)
-
-
-@router_groups.message(F.migrate_to_chat_id)
-async def group_to_supegroup_migration(message: MessageOrm, bot: aiogram.Bot):
-    # TODO: Группа изменилась на супергруппу и изменила ID, в БД нужно обновить ID
-    pass
-    # await bot.send_message(
-    #     message.migrate_to_chat_id,
-    #     f"Group upgraded to supergroup.\n"
-    #     f"Old ID: {html.code(message.chat.id)}\n"
-    #     f"New ID: {html.code(message.migrate_to_chat_id)}"
-    # )
-
-
-@router_groups.message(
-    ChatTypeFilter(chat_type=[ChatType.GROUP, ChatType.SUPERGROUP]),
+@router.message(
     BotNameFilter(bot_names=settings.BOT_NAMES),
-    F.text
-    & (F.content_type == ContentType.TEXT)
-    & (F.text[0] != '/')
+    (F.text[0] != '/')
 )
 async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
     arr_msg = message.text.split()[1:]
@@ -119,7 +64,7 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
             animation, answer = await func.yesno()
         case 'выбери', *words:
             answer_type = AnswerType.Text
-            answer = func.choice(words)
+            answer = func.choice_words(words)
         case 'вероятность', *words:
             answer_type = AnswerType.Text
             user_url = message.from_user.mention_html()
@@ -158,14 +103,14 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
     print(answer)
 
 
-@router_groups.message(
-    ChatTypeFilter(chat_type=[ChatType.GROUP, ChatType.SUPERGROUP]),
-    F.text &
-    (F.content_type == ContentType.TEXT) &
+@router.message(
     F.text[0] != '/'
 )
 async def echo(message: Message):
-    if message.text is None or message.via_bot:
+    if message.text is None:
+        return
+
+    if message.via_bot or message.forward_origin:
         return
 
     group_user: GroupUserOrm = await func.get_group_user(message)

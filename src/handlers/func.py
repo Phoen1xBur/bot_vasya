@@ -1,12 +1,11 @@
-import pyrogram.errors
-from aiogram.types import Message, ChatMemberUpdated
 from random import random
 
+import aiohttp
+import pyrogram.errors
 from pyrogram.enums import ChatMemberStatus
+from aiogram.types import Message, ChatMemberUpdated
 
 from models import TelegramChatOrm, UserOrm, GroupUserOrm
-import aiohttp
-
 from run import app
 
 MEMBER_TYPE_ADMIN = (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR)
@@ -61,7 +60,7 @@ async def set_chance(message: Message, chance: int):
     return answer
 
 
-def choice(words):
+def choice_words(words):
     answer = 'Непредвиденная ошибка. Обратитесь в тех. поддержку'
 
     words_lower = list(map(lambda text: text.lower(), words))

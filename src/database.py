@@ -3,7 +3,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy import create_engine
 from config import settings
 
-echo = True
+echo = False
 
 sync_engine = create_engine(
     url=settings.DATABASE_URL_psycopg,

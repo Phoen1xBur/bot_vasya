@@ -24,7 +24,7 @@ redis = redis_package.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, 
 
 
 async def on_startup():
-    from routers import routers
+    from handlers import routers
 
     dp.include_routers(
         *routers
