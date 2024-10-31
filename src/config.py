@@ -24,6 +24,7 @@ class Settings(BaseSettings):
         commands = [
             BotCommand(command="start", description="Start bot"),
             BotCommand(command="help", description="Help menu"),
+            BotCommand(command="work", description="Work work work and work!"),
             BotCommand(command="profile", description="Info about your profile"),
         ]
         return commands
