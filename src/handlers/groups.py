@@ -4,6 +4,7 @@ from run import redis
 import aiogram
 from aiogram import Router, F
 from aiogram.types import Message, URLInputFile
+from aiogram.filters import Command
 
 from . import func
 from config import settings
@@ -65,6 +66,12 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
         case 'выбери', *words:
             answer_type = AnswerType.Text
             answer = func.choice_words(words)
+        case ('работа' | 'работать', ):
+            answer_type = AnswerType.Text
+            answer = await func.work(message)
+        case 'профиль', *_:
+            answer_type = AnswerType.Text
+            answer = await func.profile(message)
         case 'вероятность', *words:
             answer_type = AnswerType.Text
             user_url = message.from_user.mention_html()
@@ -101,6 +108,18 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
             pass
     print(message.text)
     print(answer)
+
+
+@router.message(Command('profile'))
+async def profile(message: Message):
+    answer = await func.profile(message)
+    await message.answer(answer)
+
+
+@router.message(Command('work'))
+async def work(message: Message):
+    answer = await func.work(message)
+    await message.answer(answer)
 
 
 @router.message(

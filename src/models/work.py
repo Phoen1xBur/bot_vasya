@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import relationship
@@ -12,6 +13,15 @@ class ProfessionOrm(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str]
+
+    @staticmethod
+    async def get_all_profession() -> list["ProfessionOrm"]:
+        async with async_session_factory() as session:
+            query = (
+                select(ProfessionOrm)
+            )
+            result = await session.execute(query)
+            return result.scalars().all()
 
 
 class WorkActivityOrm(Base):
@@ -28,3 +38,36 @@ class WorkActivityOrm(Base):
 
     income: Mapped[int]  # Заработанный средства
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
+    @staticmethod
+    async def get_all_work_activity() -> list["WorkActivityOrm"]:
+        async with async_session_factory() as session:
+            query = (
+                select(WorkActivityOrm)
+            )
+            result = await session.execute(query)
+            return result.scalars().all()
+
+    @staticmethod
+    async def get_last_work_activity_by_group_user_id(group_user_id: int) -> Optional["WorkActivityOrm"]:
+        async with async_session_factory() as session:
+            query = (
+                select(WorkActivityOrm)
+                .filter(WorkActivityOrm.group_user_id.__eq__(group_user_id))
+                .order_by(WorkActivityOrm.created_at.desc())
+                .limit(1)
+            )
+            result = await session.execute(query)
+            return result.scalars().first()
+
+    @staticmethod
+    async def insert_work_activity(profession_id: int, group_user_id: int, income: int) -> None:
+        async with async_session_factory() as session:
+            work_activity = WorkActivityOrm(
+                profession_id=profession_id,
+                group_user_id=group_user_id,
+                income=income,
+            )
+            session.add(work_activity)
+            await session.flush()
+            await session.commit()

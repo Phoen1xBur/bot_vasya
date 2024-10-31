@@ -31,7 +31,9 @@ class GroupUserOrm(Base):
             group_user = result.scalars().first()
             if group_user is None:
                 new_group_user = GroupUserOrm(
-                    user_id=user_id, telegram_chat_id=tg_chat_id, **kwargs
+                    user_id=user_id,
+                    telegram_chat_id=tg_chat_id,
+                    **kwargs
                 )
                 session.add(new_group_user)
             else:
@@ -73,3 +75,17 @@ class GroupUserOrm(Base):
             )
             res = await session.execute(groups_user)
             return res.scalars().all()
+
+    async def money_plus(self, amount: int):
+        async with async_session_factory() as session:
+            group_user = await session.get(GroupUserOrm, self.id)
+            group_user.money += amount
+            await session.flush()
+            await session.commit()
+
+    async def money_minus(self, amount: int):
+        async with async_session_factory() as session:
+            group_user = await session.get(GroupUserOrm, self.id)
+            group_user.money -= amount
+            await session.flush()
+            await session.commit()
