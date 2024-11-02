@@ -41,7 +41,7 @@ async def update_users(event: ChatMemberUpdated | Message):
         async for member in app.get_chat_members(event.chat.id):
             if member.user.is_bot:
                 continue
-            await UserOrm.insert_or_update_user(member.user)
+            await UserOrm.insert_or_update_user(member.user.id, member.user)
             await GroupUserOrm.insert_or_update_group_user(
                 member.user.id, event.chat.id, chat_member_status=member.status
             )
@@ -60,7 +60,7 @@ async def update_user(event: ChatMemberUpdated):
             return
     if member.user.is_bot:
         return
-    await UserOrm.insert_or_update_user(member.user)
+    await UserOrm.insert_or_update_user(member.user.id, member.user)
     await GroupUserOrm.insert_or_update_group_user(member.user.id, event.chat.id, chat_member_status=member.status)
 
 

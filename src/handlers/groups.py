@@ -72,6 +72,7 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
         case 'профиль', *_:
             answer_type = AnswerType.Text
             answer = await func.profile(message)
+            await func.update_users(message)
         case 'вероятность', *words:
             answer_type = AnswerType.Text
             user_url = message.from_user.mention_html()
