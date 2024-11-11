@@ -8,11 +8,4 @@ class Rank(Enum):
     USER = 'user'
     VIP = 'vip'
     PREMIUM = 'premium'
-
-
-class AnswerType(Enum):
-    Text = 'text'
-    Photo = 'photo'
-    Video = 'video'
-    Animation = 'animation'
-    Nope = None
+    OWNER = 'owner'

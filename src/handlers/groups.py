@@ -1,17 +1,21 @@
 import random
+
+from aiogram.methods import SendAnimation, SendMessage
+
 from run import redis
 
 import aiogram
 from aiogram import Router, F
-from aiogram.types import Message, URLInputFile
+from aiogram.types import Message
 from aiogram.filters import Command
 
 from . import func
 from config import settings
 from models import MessageOrm, TelegramChatOrm, GroupUserOrm
 from utils.filters import ChatTypeFilter, MessageTypeFilter, BotNameFilter
-from utils.enums import AnswerType, ChatType, ContentType
+from utils.enums import ChatType, ContentType
 from utils.utils import generate_text
+from .command import CommandUndefined, CommandCat
 
 router = Router(name=__name__)
 router.message.filter(
@@ -40,74 +44,51 @@ router.message.filter(
 async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
     arr_msg = message.text.split()[1:]
     group_user: GroupUserOrm = await func.get_group_user(message)
+    chat_id = message.chat.id
 
     match arr_msg:
         case []:
-            answer_type = AnswerType.Text
             messages = [msg.text for msg in await MessageOrm.get_messages(message.chat.id)]
             answer = generate_text(messages)
+            command = SendMessage(chat_id=chat_id, text=answer)
         case 'шанс', *chance:
-            answer_type = AnswerType.Text
             if group_user.chat_member_status in func.MEMBER_TYPE_ADMIN:
-                try:
-                    chance = chance[0] if len(chance) > 0 else -1
-                    answer = await func.set_chance(message, chance)
-                    redis.set(f'tg_chat_chance:{message.chat.id}', chance, ex=120)
-                except ValueError as e:
-                    answer = e.__str__()
+                chance = chance[0] if len(chance) > 0 else -1
+                answer = await func.set_chance(message, chance)
+                redis.set(f'tg_chat_chance:{message.chat.id}', chance, ex=120)
             else:
                 answer = 'Эта привилегия доступна только для администраторов группы'
-        case 'ответь', 'гиф', *_:
-            answer_type = AnswerType.Animation
+            command = SendMessage(chat_id=chat_id, text=answer)
+        case 'ответь', *words:
             animation, answer = await func.yesno()
-        case 'ответь', *_:
-            answer_type = AnswerType.Text
-            animation, answer = await func.yesno()
+            gif = words and words[0] == 'гиф'
+            if gif:
+                command = SendAnimation(chat_id=chat_id, animation=animation, caption=answer)
+            else:
+                command = SendMessage(chat_id=chat_id, text=answer)
         case 'выбери', *words:
-            answer_type = AnswerType.Text
             answer = func.choice_words(words)
+            command = SendMessage(chat_id=chat_id, text=answer)
         case ('работа' | 'работать', ):
-            answer_type = AnswerType.Text
-            answer = await func.work(message)
+            return await work(message)
         case 'профиль', *_:
-            answer_type = AnswerType.Text
-            answer = await func.profile(message)
+            return await profile(message)
         case 'вероятность', *words:
-            answer_type = AnswerType.Text
-            user_url = message.from_user.mention_html()
-            text = ' '.join(words).replace('Я', user_url).replace('я', user_url)
+            text = ' '.join(words)
             answer = f'Вероятность {text}: {random.randint(0, 100)}%'
+            command = SendMessage(chat_id=chat_id, text=answer)
         case 'кто', *words:
-            answer_type = AnswerType.Text
             members = await GroupUserOrm.get_groups_user_by_telegram_chat_id(message.chat.id)
             random_member: GroupUserOrm = random.choice(members)
             member = await bot.get_chat_member(random_member.telegram_chat_id, random_member.user_id)
             answer = f'Я думаю {member.user.mention_html()} ' + ' '.join(words)
+            command = SendMessage(chat_id=chat_id, text=answer)
         case 'кот', *text:
-            answer_type = AnswerType.Photo
-            url = 'https://cataas.com/cat'
-            if text:
-                url = 'https://cataas.com/cat/says/' + ' '.join(text) + '?fontSize=50&fontColor=white'
-            photo = URLInputFile(url)
-            answer = 'Держи котика'
+            command = CommandCat(chat_id=chat_id, text=text)
         case _:
-            answer_type = AnswerType.Text
-            answer = 'Я ничего не понял, что ты хочешь от меня\nМожешь написать /help@vasya_fun_bot для справки'
+            command = CommandUndefined(chat_id=chat_id)
 
-    # TODO: Переделать в будущем на message.chat.do(action, *param)
-    match answer_type:
-        case AnswerType.Text:
-            await message.answer(answer)
-        case AnswerType.Animation:
-            await message.answer_animation(animation=animation, caption=answer)
-        case AnswerType.Photo:
-            await message.answer_photo(photo=photo, caption=answer)
-        # case AnswerType.Video:
-        #     await message.answer_video(video=video, caption=answer)
-        case _:
-            pass
-    print(message.text)
-    print(answer)
+    await bot(command)
 
 
 @router.message(Command('profile'))
@@ -136,7 +117,10 @@ async def echo(message: Message):
 
     await MessageOrm.insert_message(group_user.id, message.text.replace('@', ''))
 
-    chance = redis.get(f'tg_chat_chance:{message.chat.id}')
+    try:
+        chance = redis.get(f'tg_chat_chance:{message.chat.id}')
+    except:
+        chance = None
     if chance is None:
         chance = (await TelegramChatOrm.get_chance(message.chat.id)).answer_chance
         redis.set(f'tg_chat_chance:{message.chat.id}', chance, ex=120)

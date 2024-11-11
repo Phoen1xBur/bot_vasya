@@ -2,6 +2,22 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from aiogram.types import BotCommand
 
 
+# https://core.telegram.org/bots/api#html-style
+help_text = """<b>Список команд:</b>
+
+<b>• Вася шанс [от 0 до 100] —</b> изменит шанс отправки сообщения
+
+<b>• Вася выбери [значение 1 или значение 2] —</b> выберет одно из предложенного 
+
+<b>• Вася кот —</b> отправит картинку  котика
+
+<b>• Вася кот [текст сообщения] —</b>  отправит картинку котика с текстом
+
+<b>• Вася ответь [текст сообщения] / Вася ответь гиф [текст сообщения] ——</b> ответит да/нет с гифкой или без 
+
+<b>• Вася кто [текст] —</b> выберет рандомного участника чата"""
+
+
 class Settings(BaseSettings):
     TOKEN: str
     DB_HOST: str
@@ -16,7 +32,7 @@ class Settings(BaseSettings):
 
     @property
     def BOT_NAMES(self) -> tuple:
-        return 'вася', 'вачя', 'васч'
+        return 'вася', 'вачя', 'васч', 'василий'
         # return 'вв', 'в'
 
     @property

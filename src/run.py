@@ -29,7 +29,6 @@ async def on_startup():
     dp.include_routers(
         *routers
     )
-
     await bot.set_my_commands(settings.MY_COMMANDS)
     bot.default.parse_mode = 'HTML'
     await dp.start_polling(bot)

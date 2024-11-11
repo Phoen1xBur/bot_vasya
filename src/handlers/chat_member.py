@@ -35,7 +35,7 @@ async def bot_invite_chat(event: ChatMemberUpdated):
     )
 )
 async def new_member(event: ChatMemberUpdated):
-    await func.update_user(event)
+    await func.update_users(event)
     await event.answer(
         f'Привет, {event.new_chat_member.user.mention_html()}!\n'
         f'Добро пожаловать в {event.chat.title}'

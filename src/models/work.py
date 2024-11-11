@@ -13,6 +13,9 @@ class ProfessionOrm(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str]
+    money_max: Mapped[int] = mapped_column(default=0)  # Максимальный порог заработка (Включительно)
+    money_min: Mapped[int] = mapped_column(default=0)  # Минимальный порог заработка (Включительно)
+    accompanying_text: Mapped[str] = mapped_column(nullable=True)
 
     @staticmethod
     async def get_all_profession() -> list["ProfessionOrm"]:

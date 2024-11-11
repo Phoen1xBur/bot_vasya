@@ -1,0 +1,9 @@
+run:
+	echo make NAME=update name generate
+	echo make migrate
+
+generate:
+	alembic revision --m="${NAME}" --autogenerate
+
+migrate:
+	alembic upgrade head

@@ -65,11 +65,13 @@ async def update_user(event: ChatMemberUpdated):
 
 
 async def set_chance(message: Message, chance: int):
-    answer = 'Непредвиденная ошибка. Обратитесь в тех. поддержку'
-
-    chance = int(chance)
+    answer_error = 'Шанс должен быть числом от 0 до 100'
+    try:
+        chance = int(chance)
+    except ValueError:
+        return answer_error
     if chance > 100 or chance < 0:
-        raise ValueError('Шанс должен быть числом от 0 до 100')
+        return answer_error
     answer = f'Шанс сообщения изменен на {chance}'
     await TelegramChatOrm.change_answer_chance(message.chat.id, chance)
 
@@ -118,6 +120,7 @@ async def work(message: Message):
     user = await GroupUserOrm.get_group_user(message.from_user.id, message.chat.id)
     last_user_work_activity = await WorkActivityOrm.get_last_work_activity_by_group_user_id(user.id)
     h6 = td(hours=6)
+    # ПРОВЕРКА НА ВОЗМОЖНОСТЬ РАБОТЫ
     if last_user_work_activity:
         delta = dt.now() - last_user_work_activity.created_at
         if h6 > delta:
@@ -131,14 +134,20 @@ async def work(message: Message):
             return (f'Вы еще не отдохнули.\n'
                     f'Следующая работа будет доступна через {html.bold(hours_and_minutes_str)}\n'
                     f'{html.italic(next_work_str)} (GMT+3)')
-    profession = random.choice(await ProfessionOrm.get_all_profession())
-    income = random.randint(1, 10)
+    # РАБОТАЕМ
+    profession: ProfessionOrm = random.choice(await ProfessionOrm.get_all_profession())
+    # заработок относительно минимума и максимума профессии включительно
+    income = random.randint(profession.money_min, profession.money_max)
     vasya_coin = declension_word_by_number(income, 'васякоинов', 'васякоин', 'васякоина')
     await user.money_plus(income)
     await WorkActivityOrm.insert_work_activity(profession.id, user.id, income)
 
-    work_text = (f'{m_user.mention_html(m_user.username)} устраивается на должность {html.bold(html.italic(profession.name))} '
-                 f'и зарабатывает {income} {vasya_coin}')
+    work_text = (
+        f'{m_user.mention_html(m_user.username)} устраивается на должность {html.bold(html.italic(profession.name))} '
+        f'и зарабатывает {income} {vasya_coin}'
+    )
+    if profession.accompanying_text:
+        work_text += f'\n\n{html.italic(profession.accompanying_text)}'
     return work_text
 
 
