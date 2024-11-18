@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from aiogram.types import BotCommand
+import redis as redis_package
 
 
 # https://core.telegram.org/bots/api#html-style
@@ -61,3 +62,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+redis = redis_package.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, decode_responses=True)

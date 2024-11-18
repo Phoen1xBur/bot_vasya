@@ -1,5 +1,4 @@
 import asyncio
-import redis as redis_package
 
 from aiogram import Bot, Dispatcher
 from pyrogram import Client
@@ -19,8 +18,6 @@ app = Client(
     settings.API_ID,
     settings.API_HASH
 )
-
-redis = redis_package.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, decode_responses=True)
 
 
 async def on_startup():

@@ -2,7 +2,7 @@ import random
 
 from aiogram.methods import SendAnimation, SendMessage
 
-from run import redis
+from config import redis
 
 import aiogram
 from aiogram import Router, F

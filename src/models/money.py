@@ -1,11 +1,15 @@
 from datetime import datetime
 from typing import Optional
 
+from config import redis
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import relationship
 
+from utils.enums import TransactionType
 from . import GroupUserOrm
 from .imports import *
+
+_second, _minute, _hour, _day = 1, 60, 3600, 86400  # Секунда, минута, час, сутки
 
 
 class ProfessionOrm(Base):
@@ -74,3 +78,47 @@ class WorkActivityOrm(Base):
             session.add(work_activity)
             await session.flush()
             await session.commit()
+
+
+class TransactionOrm(Base):
+    __tablename__ = 'transaction'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # From GroupUserOrm
+    group_user_from_id: Mapped[int] = mapped_column(ForeignKey('group_user.id', ondelete='CASCADE'), index=True, nullable=True)
+    group_user_from: Mapped[GroupUserOrm] = relationship()
+    # To GroupUserOrm
+    group_user_to_id: Mapped[int] = mapped_column(ForeignKey('group_user.id', ondelete='CASCADE'), index=True, nullable=True)
+    group_user_to: Mapped[GroupUserOrm] = relationship()
+
+    transaction_type: Mapped[TransactionType]
+    transferred_money: Mapped[int]  # total
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
+
+class Prison:
+    __tablename = 'prison'
+    __DEFAULT_IMPRISONMENT_TIME = _hour * 6
+    _redis = redis
+
+    def _get_table_name(self, chat_id: str | int, user_id: str | int) -> str:
+        return f'{self.__tablename}_{chat_id}_{user_id}'
+
+    def is_prisoner(self, chat_id: str | int, user_id: str | int) -> bool:
+        table_name = self._get_table_name(chat_id, user_id)
+        return self._redis.keys(table_name)
+
+    def add_prisoner(self, chat_id: str | int, user_id: str | int, imprisonment_time: int = __DEFAULT_IMPRISONMENT_TIME) -> None:
+        """Добавляет пользователя в тюрьму
+
+        :param chat_id: id чата
+        :param user_id: id пользователя
+        :param imprisonment_time: время заключения в секундах, по умолчанию DEFAULT_IMPRISONMENT_TIME
+        """
+        table_name = self._get_table_name(chat_id, user_id)
+        self._redis.set(table_name, 1, ex=imprisonment_time)
+
+
+class Rob:
+    pass
