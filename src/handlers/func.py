@@ -64,6 +64,16 @@ async def update_user(event: ChatMemberUpdated):
     await GroupUserOrm.insert_or_update_group_user(member.user.id, event.chat.id, chat_member_status=member.status)
 
 
+async def get_user_by_username(chat_id: int, username: str):
+    async with app:
+        try:
+            member = await app.get_chat_member(chat_id, username)
+            member = member.user
+        except pyrogram.errors.bad_request_400.UserNotParticipant:
+            member = None
+        return member
+
+
 async def set_chance(message: Message, chance: int):
     answer_error = 'Шанс должен быть числом от 0 до 100'
     try:
@@ -115,7 +125,7 @@ async def yesno() -> tuple:
     return animation, answer_ru
 
 
-async def work(message: Message):
+async def work(message: Message) -> str:
     m_user = message.from_user
     user = await GroupUserOrm.get_group_user(message.from_user.id, message.chat.id)
     last_user_work_activity = await WorkActivityOrm.get_last_work_activity_by_group_user_id(user.id)
@@ -151,7 +161,7 @@ async def work(message: Message):
     return work_text
 
 
-async def profile(message: Message):
+async def profile(message: Message) -> str:
     m_user = message.from_user
     user = await GroupUserOrm.get_group_user(m_user.id, message.chat.id)
     vasya_coin = declension_word_by_number(user.money, 'васякоинов', 'васякоин', 'васякоина')
@@ -167,3 +177,46 @@ async def profile(message: Message):
     {html.bold('Баланс')}: {user.money} {vasya_coin}'''
 
     return profile_text
+
+
+async def rob(message: Message) -> str:
+    # Проверяем, есть ли у пользователя возможность грабить
+    # TODO: Реализовать
+
+    victim_user: GroupUserOrm = None
+    victim_user_message: User = None
+    # Узнаем пользователя, у которого нужно украсть
+    if message.entities:
+        for entity in message.entities:
+            if entity.user:
+                if entity.user.is_bot:
+                    return 'Нельзя обокрасть бота!'
+                victim_user = await GroupUserOrm.get_group_user(entity.user.id, message.chat.id)
+                victim_user_message = entity.user
+                if victim_user is not None:
+                    break
+            else:
+                username_offset, username_length = entity.offset, entity.length
+                username = message.text[username_offset:username_offset+username_length]
+                victim_user_message = await get_user_by_username(message.chat.id, username)
+                if victim_user_message.is_bot:
+                    return 'Нельзя обокрасть бота!'
+                victim_user = await GroupUserOrm.get_group_user(victim_user_message.id, message.chat.id)
+    if victim_user is None:
+        if message.reply_to_message and not message.reply_to_message.from_user.is_bot:
+            reply_user = message.reply_to_message.from_user
+            victim_user = await GroupUserOrm.get_group_user(reply_user.id, message.chat.id)
+            victim_user_message = reply_user
+
+    # Если пользователь не найден, сообщаем об этом
+    if victim_user is None:
+        return 'Вы не выбрали кого обворовать!'
+
+    if message.from_user.id == victim_user_message.id:
+        return 'Нельзя воровать у самого себя!'
+    # return f"Вы обворовали {html.link(victim_user_message, victim_user.mention_link())}"
+    return f"Вы обворовали {victim_user_message.mention_html()}"
+    # group_user_from = await GroupUserOrm.get_group_user(from_user.id, message.chat.id)
+    # await TransactionOrm.insert_transaction(
+    #     group_user_from.id, None, TransactionType.BANK_TRANSFER, 0
+    # )

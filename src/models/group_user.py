@@ -76,6 +76,10 @@ class GroupUserOrm(Base):
             res = await session.execute(groups_user)
             return res.scalars().all()
 
+    def mention_link(self) -> str:
+        link = f'tg://user?id={self.user_id}'
+        return link
+
     async def money_plus(self, amount: int):
         async with async_session_factory() as session:
             group_user = await session.get(GroupUserOrm, self.id)

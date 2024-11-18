@@ -9,11 +9,12 @@ from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
 
+from models.money import TransactionOrm
 from . import func
 from config import settings
 from models import MessageOrm, TelegramChatOrm, GroupUserOrm
 from utils.filters import ChatTypeFilter, MessageTypeFilter, BotNameFilter
-from utils.enums import ChatType, ContentType
+from utils.enums import ChatType, ContentType, TransactionType
 from utils.utils import generate_text
 from .command import CommandUndefined, CommandCat
 
@@ -85,10 +86,12 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
             command = SendMessage(chat_id=chat_id, text=answer)
         case 'кот', *text:
             command = CommandCat(chat_id=chat_id, text=text)
+        case 'кража', *text:
+            return await rob(message)
         case _:
             command = CommandUndefined(chat_id=chat_id)
-
-    await bot(command)
+    if command:
+        await bot(command)
 
 
 @router.message(Command('profile'))
@@ -100,6 +103,12 @@ async def profile(message: Message):
 @router.message(Command('work'))
 async def work(message: Message):
     answer = await func.work(message)
+    await message.answer(answer)
+
+
+@router.message(Command('rob'))
+async def rob(message: Message):
+    answer = await func.rob(message)
     await message.answer(answer)
 
 
@@ -116,6 +125,12 @@ async def echo(message: Message):
     group_user: GroupUserOrm = await func.get_group_user(message)
 
     await MessageOrm.insert_message(group_user.id, message.text.replace('@', ''))
+
+    if message.reply_to_message and message.reply_to_message.from_user.username == 'vasya_fun_bot':
+        messages = [msg.text for msg in await MessageOrm.get_messages(message.chat.id)]
+        answer = generate_text(messages)
+        await message.answer(answer)
+        return
 
     try:
         chance = redis.get(f'tg_chat_chance:{message.chat.id}')

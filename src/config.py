@@ -39,10 +39,11 @@ class Settings(BaseSettings):
     @property
     def MY_COMMANDS(self) -> list[BotCommand]:
         commands = [
-            BotCommand(command="start", description="Start bot"),
-            BotCommand(command="help", description="Help menu"),
-            BotCommand(command="work", description="Work work work and work!"),
-            BotCommand(command="profile", description="Info about your profile"),
+            BotCommand(command="start", description="Старт"),
+            BotCommand(command="help", description="Помощь по боту"),
+            BotCommand(command="work", description="Время работать и зарабатывать!"),
+            BotCommand(command="profile", description="Информация о твоем профиле"),
+            BotCommand(command="rob", description="Кража! Укради у ближнего своего"),
         ]
         return commands
 

@@ -6,7 +6,6 @@ from sqlalchemy import ForeignKey
 from sqlalchemy.orm import relationship
 
 from utils.enums import TransactionType
-from . import GroupUserOrm
 from .imports import *
 
 _second, _minute, _hour, _day = 1, 60, 3600, 86400  # Секунда, минута, час, сутки
@@ -41,7 +40,7 @@ class WorkActivityOrm(Base):
     profession: Mapped[ProfessionOrm] = relationship()
     # GroupUserOrm
     group_user_id: Mapped[int] = mapped_column(ForeignKey('group_user.id', ondelete='CASCADE'), index=True)
-    group_user: Mapped[GroupUserOrm] = relationship()
+    group_user: Mapped["GroupUserOrm"] = relationship()
 
     income: Mapped[int]  # Заработанный средства
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
@@ -86,15 +85,56 @@ class TransactionOrm(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
 
     # From GroupUserOrm
-    group_user_from_id: Mapped[int] = mapped_column(ForeignKey('group_user.id', ondelete='CASCADE'), index=True, nullable=True)
-    group_user_from: Mapped[GroupUserOrm] = relationship()
+    group_user_from_id: Mapped[int] = mapped_column(
+        ForeignKey('group_user.id', ondelete='CASCADE'), index=True, nullable=True
+    )
+    # group_user_from: Mapped["GroupUserOrm"] = relationship()
     # To GroupUserOrm
-    group_user_to_id: Mapped[int] = mapped_column(ForeignKey('group_user.id', ondelete='CASCADE'), index=True, nullable=True)
-    group_user_to: Mapped[GroupUserOrm] = relationship()
+    group_user_to_id: Mapped[int] = mapped_column(
+        ForeignKey('group_user.id', ondelete='CASCADE'), index=True, nullable=True
+    )
+    # group_user_to: Mapped["GroupUserOrm"] = relationship()
 
     transaction_type: Mapped[TransactionType]
     transferred_money: Mapped[int]  # total
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
+    @staticmethod
+    async def insert_transaction(
+            group_user_from_id: int | None, group_user_to_id: int | None,
+            transaction_type: TransactionType, transferred_money: int
+    ) -> None:
+        async with async_session_factory() as session:
+            transaction = TransactionOrm(
+                group_user_from_id=group_user_from_id,
+                group_user_to_id=group_user_to_id,
+                transaction_type=transaction_type,
+                transferred_money=transferred_money,
+            )
+            session.add(transaction)
+            await session.flush()
+            await session.commit()
+
+    @staticmethod
+    async def get_all_transaction() -> list["TransactionOrm"]:
+        async with async_session_factory() as session:
+            query = (
+                select(TransactionOrm)
+            )
+            result = await session.execute(query)
+            return result.scalars().all()
+
+    @staticmethod
+    async def get_last_transaction_by_params(**kwargs) -> Optional["TransactionOrm"]:
+        async with async_session_factory() as session:
+            query = (
+                select(TransactionOrm)
+                .filter_by(**kwargs)
+                .order_by(WorkActivityOrm.created_at.desc())
+                .limit(1)
+            )
+            result = await session.execute(query)
+            return result.scalars().first()
 
 
 class Prison:
