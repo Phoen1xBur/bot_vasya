@@ -9,7 +9,6 @@ from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
 
-from models.money import TransactionOrm
 from . import func
 from config import settings
 from models import MessageOrm, TelegramChatOrm, GroupUserOrm
@@ -78,7 +77,7 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
             text = ' '.join(words)
             answer = f'Вероятность {text}: {random.randint(0, 100)}%'
             command = SendMessage(chat_id=chat_id, text=answer)
-        case 'кто', *words:
+        case 'кто' | 'кого', *words:
             members = await GroupUserOrm.get_groups_user_by_telegram_chat_id(message.chat.id)
             random_member: GroupUserOrm = random.choice(members)
             member = await bot.get_chat_member(random_member.telegram_chat_id, random_member.user_id)
@@ -87,7 +86,20 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
         case 'кот', *text:
             command = CommandCat(chat_id=chat_id, text=text)
         case 'кража', *text:
-            return await rob(message)
+            answer = await func.rob(message, bot)
+            command = SendMessage(chat_id=chat_id, text=answer)
+        case 'перевод', *text:
+            answer = 'Укажите сумму перевода'
+            if text:
+                try:
+                    money = int(text[0])
+                    if money <= 0:
+                        answer = 'Сумма не может быть отрицательной'
+                    else:
+                        answer = await func.transfer(message, bot, money)
+                except ValueError:
+                    answer = 'Укажите сумму перевода'
+            command = SendMessage(chat_id=chat_id, text=answer)
         case _:
             command = CommandUndefined(chat_id=chat_id)
     if command:
@@ -103,12 +115,6 @@ async def profile(message: Message):
 @router.message(Command('work'))
 async def work(message: Message):
     answer = await func.work(message)
-    await message.answer(answer)
-
-
-@router.message(Command('rob'))
-async def rob(message: Message):
-    answer = await func.rob(message)
     await message.answer(answer)
 
 

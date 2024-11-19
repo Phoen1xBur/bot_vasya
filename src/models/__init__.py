@@ -2,7 +2,7 @@ from .user import UserOrm
 from .chat import TelegramChatOrm
 from .group_user import GroupUserOrm
 from .message import MessageOrm
-from .money import ProfessionOrm, WorkActivityOrm
+from .money import ProfessionOrm, TransactionOrm
 
 
 __all__ = [
@@ -11,6 +11,6 @@ __all__ = [
     'GroupUserOrm',
     'MessageOrm',
     'ProfessionOrm',
-    'WorkActivityOrm',
+    'TransactionOrm',
 ]
 

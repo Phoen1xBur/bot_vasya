@@ -2,7 +2,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from aiogram.types import BotCommand
 import redis as redis_package
 
-
 # https://core.telegram.org/bots/api#html-style
 help_text = """<b>Список команд:</b>
 
@@ -43,7 +42,7 @@ class Settings(BaseSettings):
             BotCommand(command="help", description="Помощь по боту"),
             BotCommand(command="work", description="Время работать и зарабатывать!"),
             BotCommand(command="profile", description="Информация о твоем профиле"),
-            BotCommand(command="rob", description="Кража! Укради у ближнего своего"),
+            # BotCommand(command="rob", description="Кража! Укради у ближнего своего"),
         ]
         return commands
 
