@@ -244,7 +244,7 @@ async def rob(message: Message, bot: aiogram.Bot) -> str:
         can_rob, next_time, at_time = next_activity(last_trans.created_at, H6)
         if not can_rob:
             return (f'За вами пристально следят.\n'
-                    f'Следующая работа будет доступна через {html.bold(next_time)}\n'
+                    f'Следующая кража будет доступна через {html.bold(next_time)}\n'
                     f'{html.italic(at_time)} (GMT+3)')
 
     # Находим пользователя, которого нужно ограбить
