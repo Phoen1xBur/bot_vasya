@@ -89,16 +89,10 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
             answer = await func.rob(message, bot)
             command = SendMessage(chat_id=chat_id, text=answer)
         case 'перевод', *text:
-            answer = 'Укажите сумму перевода'
-            if text:
-                try:
-                    money = int(text[0])
-                    if money <= 0:
-                        answer = 'Сумма не может быть отрицательной'
-                    else:
-                        answer = await func.transfer(message, bot, money)
-                except ValueError:
-                    answer = 'Укажите сумму перевода'
+            answer = await func.transfer(message, bot, text)
+            command = SendMessage(chat_id=chat_id, text=answer)
+        case 'убить', *text:
+            answer = await func.kill(message, bot)
             command = SendMessage(chat_id=chat_id, text=answer)
         case _:
             command = CommandUndefined(chat_id=chat_id)

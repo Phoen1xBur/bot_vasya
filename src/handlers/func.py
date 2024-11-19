@@ -1,6 +1,7 @@
 from datetime import datetime as dt, timedelta as td, datetime
 from math import ceil
 import random
+from typing import Any
 
 import aiogram
 import aiohttp
@@ -276,7 +277,17 @@ async def rob(message: Message, bot: aiogram.Bot) -> str:
     return f"Вы украли у {victim_user_message.mention_html()} {money} {vasya_coin}"
 
 
-async def transfer(message: Message, bot: aiogram.Bot, money: int) -> str:
+async def transfer(message: Message, bot: aiogram.Bot, money: list[Any]) -> str:
+    if money:
+        try:
+            money = int(money[0])
+            if money <= 0:
+                return 'Сумма не может быть отрицательной'
+        except ValueError:
+            return 'Укажите сумму перевода. Это должно быть число больше 0'
+    else:
+        return 'Укажите сумму перевода'
+
     group_user_orm_from = await get_group_user(message)
 
     if group_user_orm_from.money < money:
@@ -306,3 +317,21 @@ async def transfer(message: Message, bot: aiogram.Bot, money: int) -> str:
     await user_orm_to.money_plus(money)
     vasya_coin = declension_word_by_number(money, 'васякоинов', 'васякоин', 'васякоина')
     return f"Вы перевели {user_message_to.mention_html()} {money} {vasya_coin}"
+
+
+async def kill(message: Message, bot: aiogram.Bot) -> str:
+    # Проверка в тюрьме ли человек, который убивает
+    if Prison.is_prisoner(chat_id=message.chat.id, user_id=message.from_user.id):
+        return 'Вы не можете убивать пока находитесь в тюрьме!'
+
+    # Находим пользователя, которого нужно убить
+    user_orm_to: GroupUserOrm
+    user_message_to: AiogramUser
+    user_orm_to, user_message_to = await get_user_by_message(message, bot)
+    if user_orm_to is None:
+        return 'Вы не выбрали кого убить!'
+
+    if message.from_user.id == user_message_to.id:
+        return 'Нельзя убить самого себя!'
+
+    return html.bold(f'🔫 Вы застрелили пользователя {user_message_to.mention_html()}!')
