@@ -94,6 +94,9 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
         case 'убить', *text:
             answer = await func.kill(message, bot)
             command = SendMessage(chat_id=chat_id, text=answer)
+        case 'топ', *text:
+            answer = await func.get_top_users_money(message)
+            command = SendMessage(chat_id=chat_id, text=answer)
         case _:
             command = CommandUndefined(chat_id=chat_id)
     if command:

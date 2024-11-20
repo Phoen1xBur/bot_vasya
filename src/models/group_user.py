@@ -76,8 +76,32 @@ class GroupUserOrm(Base):
             res = await session.execute(groups_user)
             return res.scalars().all()
 
-    def mention_link(self) -> str:
-        link = f'tg://user?id={self.user_id}'
+    @staticmethod
+    async def get_group_users_top_money_by_telegram_chat_id(tg_chat_id: int, limit: int) -> list["GroupUserOrm"]:
+        async with async_session_factory() as session:
+            groups_user = (
+                select(GroupUserOrm)
+                .filter(
+                    GroupUserOrm.telegram_chat_id.__eq__(tg_chat_id),
+                    GroupUserOrm.chat_member_status.notin_(
+                        (
+                            ChatMemberStatus.BANNED,
+                            ChatMemberStatus.LEFT,
+                        )
+                    ),
+                )
+                .order_by(GroupUserOrm.money.desc())
+                .limit(limit)
+            )
+            res = await session.execute(groups_user)
+            return res.scalars().all()
+
+    async def mention_link_html(self) -> str:
+        async with async_session_factory() as session:
+            user = await session.get(UserOrm, self.user_id)
+        first_name = user.first_name if user.first_name is not None else ''
+        last_name = user.last_name if user.last_name is not None else ''
+        link = f'<a href="tg://user?id={self.user_id}">{first_name} {last_name}</a>'
         return link
 
     async def money_plus(self, amount: int):

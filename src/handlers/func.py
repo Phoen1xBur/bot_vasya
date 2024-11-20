@@ -214,7 +214,7 @@ async def get_user_by_message(message: Message, bot: aiogram.Bot) -> (GroupUserO
                 victim_user_message = entity.user
             else:
                 username_offset, username_length = entity.offset, entity.length
-                username = message.text[username_offset:username_offset+username_length]
+                username = message.text[username_offset:username_offset + username_length]
                 pyrogram_user = await get_user_by_username(message.chat.id, username)
                 if pyrogram_user is not None:
                     user_id = pyrogram_user.id
@@ -335,3 +335,20 @@ async def kill(message: Message, bot: aiogram.Bot) -> str:
         return 'Нельзя убить самого себя!'
 
     return html.bold(f'🔫 Вы застрелили пользователя {user_message_to.mention_html()}!')
+
+
+async def get_top_users_money(message: Message, *, limit: int = 10) -> str:
+    # Проверка в тюрьме ли человек
+    if Prison.is_prisoner(chat_id=message.chat.id, user_id=message.from_user.id):
+        return 'Вы не можете смотреть топ пока находитесь в тюрьме!'
+
+    # Получаем список пользователей
+    users = await GroupUserOrm.get_group_users_top_money_by_telegram_chat_id(message.chat.id, limit=limit)
+    limit_count = limit if len(users) > limit else len(users)
+
+    # Выводим список пользователей
+    return html.bold(f'💰 Топ {limit_count} пользователей по количеству денег:') + '\n' + '\n'.join(
+        [f'{i + 1}. {await user.mention_link_html()} - {user.money} ' +
+         declension_word_by_number(user.money, "васякоинов", "васякоин", "васякоина")
+         for i, user in enumerate(users)]
+    )
