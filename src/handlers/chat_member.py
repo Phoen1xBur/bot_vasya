@@ -7,7 +7,6 @@ from models import TelegramChatOrm, MessageOrm
 from utils.filters import ChatTypeFilter
 from utils.enums import ChatType
 
-
 router = Router(name=__name__)
 router.message.filter(
     ChatTypeFilter(
@@ -23,10 +22,11 @@ router.message.filter(
     )
 )
 async def bot_invite_chat(event: ChatMemberUpdated):
+    # Для полноценного общения, выдайте мне права администратора группы
     await TelegramChatOrm.insert_or_update_telegram_chat(event.chat.id)
     await func.update_users(event)
     await event.answer(f'Всем привет, спасибо что пригласили меня в {html.quote(event.chat.title)}\n'
-                       f'Для полноценного общения, выдайте мне права администратора группы')
+                       f'Посмотреть список моих команд можно здесь: {html.quote("/help@vasya_fun_bot")}')
 
 
 @router.chat_member(
@@ -57,4 +57,3 @@ async def group_to_supegroup_migration(message: MessageOrm, bot: aiogram.Bot):
     #     f"Old ID: {html.code(message.chat.id)}\n"
     #     f"New ID: {html.code(message.migrate_to_chat_id)}"
     # )
-
