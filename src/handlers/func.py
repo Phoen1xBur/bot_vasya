@@ -14,9 +14,11 @@ from aiogram import html
 from models import TelegramChatOrm, UserOrm, GroupUserOrm, ProfessionOrm, TransactionOrm
 from models.money import Prison
 from run import app
-from utils.enums import TransactionType
+from utils.enums import TransactionType, EnumChance, RandomRob
 
 MEMBER_TYPE_ADMIN = (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR)
+# RANDOM_ROB_LIST = [EnumChance(RandomRob.SUCCESS, 35), EnumChance(RandomRob.FAIL, 35), EnumChance(RandomRob.POLICE, 30)]
+RANDOM_ROB_LIST = [EnumChance(RandomRob.SUCCESS, 50), EnumChance(RandomRob.FAIL, 50)]
 H6 = td(hours=6)
 H12 = td(hours=12)
 
@@ -268,13 +270,44 @@ async def rob(message: Message, bot: aiogram.Bot) -> str:
 
     proc = victim_user_orm.money / 100
     money = random.randint(ceil(proc), ceil(proc * 30))
-    await TransactionOrm.insert_transaction(
-        victim_user_orm.id, group_user_from.id, TransactionType.ROB, money
-    )
-    await group_user_from.money_plus(money)
-    await victim_user_orm.money_minus(money)
     vasya_coin = declension_word_by_number(money, 'васякоинов', 'васякоин', 'васякоина')
-    return f"Вы украли у {victim_user_message.mention_html()} {money} {vasya_coin}"
+
+    # РАНДОМ - Варианта ограбления Успешно / Не успешно / Поймали
+    enum = random.choices(
+        RANDOM_ROB_LIST, list(map(EnumChance.get_percent, RANDOM_ROB_LIST))
+    )[0].enum
+    match enum:
+        case RandomRob.SUCCESS:
+            await TransactionOrm.insert_transaction(
+                victim_user_orm.id, group_user_from.id, TransactionType.ROB, money
+            )
+            await group_user_from.money_plus(money)
+            await victim_user_orm.money_minus(money)
+            return f"Вы украли у {victim_user_message.mention_html()} {money} {vasya_coin}"
+        case RandomRob.FAIL:
+            await TransactionOrm.insert_transaction(
+                victim_user_orm.id, group_user_from.id, TransactionType.ROB, 0
+            )
+            return random.choice([
+                f'Вы попытались украсть {money} {vasya_coin}, но ваша попытка не удалась. Лучше в следующий раз действуйте осторожнее!',
+                f'Кража на сумму {money} {vasya_coin} провалилась! Ваша жертва оказалась более внимательной, чем вы думали.',
+                f'Неудача! Вам не удалось украсть {money} {vasya_coin}. Возможно, стоит поучиться у мастеров скрытности.',
+                f'Вы пытались похитить {money} {vasya_coin}, но ваши действия были замечены. Не теряйте надежды, в следующий раз повезет больше!',
+                f'Кража на сумму {money} {vasya_coin} завершилась неудачей. Ваша жертва оказалась слишком бдительной!',
+                f'Попытка украсть {money} {vasya_coin} провалилась. Возможно, вам стоит выбрать более легкую цель.',
+                f'Вы пытались украсть {money} {vasya_coin}, но, увы, ваша попытка была замечена. Не сдавайтесь, учитесь на ошибках!',
+                f'Кража на сумму {money} {vasya_coin} не удалась. Возможно, стоит подождать подходящего момента.',
+                f'Увы, вам не удалось украсть {money} {vasya_coin}. Ваша жертва оказалась слишком хитрой!',
+                f'Попытка кражи на сумму {money} {vasya_coin} завершилась провалом. Не забывайте, что терпение — ключ к успеху!',
+            ])
+        case RandomRob.POLICE:
+            # Возвращать inline клавиатуру с выбором дать взятку/не дать
+            # TODO: Реализовать логику пойманного воровства
+            await TransactionOrm.insert_transaction(
+                victim_user_orm.id, group_user_from.id, TransactionType.ROB, 0
+            )
+        case _:
+            raise ValueError('Необработанный тип!')
 
 
 async def transfer(message: Message, bot: aiogram.Bot, money: list[Any]) -> str:
