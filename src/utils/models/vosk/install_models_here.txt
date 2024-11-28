@@ -1,0 +1,3 @@
+https://www.ffmpeg.org/
+
+https://alphacephei.com/vosk/models
