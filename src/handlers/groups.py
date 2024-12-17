@@ -95,8 +95,7 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
             answer = await func.kill(message, bot)
             command = SendMessage(chat_id=chat_id, text=answer)
         case 'топ', *text:
-            answer = await func.get_top_users_money(message)
-            command = SendMessage(chat_id=chat_id, text=answer)
+            return await top_users(message)
         case _:
             command = CommandUndefined(chat_id=chat_id)
     if command:
@@ -106,6 +105,12 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
 @router.message(Command('profile'))
 async def profile(message: Message):
     answer = await func.profile(message)
+    await message.answer(answer)
+
+
+@router.message(Command('top_users'))
+async def top_users(message: Message):
+    answer = await func.get_top_users_money(message)
     await message.answer(answer)
 
 

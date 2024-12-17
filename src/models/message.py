@@ -33,6 +33,7 @@ class MessageOrm(Base):
                 .filter(
                     GroupUserOrm.telegram_chat_id.__eq__(tg_chat_id)
                 )
+                .limit(10_000)
             )
             result = await session.execute(query)
             return result.scalars().all()

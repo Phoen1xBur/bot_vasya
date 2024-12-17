@@ -53,6 +53,7 @@ class Settings(BaseSettings):
             BotCommand(command="help", description="Помощь по боту"),
             BotCommand(command="work", description="Время работать и зарабатывать!"),
             BotCommand(command="profile", description="Информация о твоем профиле"),
+            BotCommand(command="top_users", description="Топ пользователей по количеству денег"),
             # BotCommand(command="rob", description="Кража! Укради у ближнего своего"),
         ]
         return commands
