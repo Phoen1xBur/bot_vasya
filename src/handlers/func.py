@@ -15,11 +15,14 @@ from models import TelegramChatOrm, UserOrm, GroupUserOrm, ProfessionOrm, Transa
 from models.money import Prison
 from run import app
 from utils.enums import TransactionType, EnumChance, RandomRob
+from keyboards.inline_kb_rob_police import build_inline_kb_rob_police, InlineKeyboardMarkup
 
 MEMBER_TYPE_ADMIN = (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR)
-# RANDOM_ROB_LIST = [EnumChance(RandomRob.SUCCESS, 35), EnumChance(RandomRob.FAIL, 35), EnumChance(RandomRob.POLICE, 30)]
-RANDOM_ROB_LIST = [EnumChance(RandomRob.SUCCESS, 50), EnumChance(RandomRob.FAIL, 50)]
+RANDOM_ROB_LIST = [EnumChance(RandomRob.SUCCESS, 35), EnumChance(RandomRob.FAIL, 30), EnumChance(RandomRob.POLICE, 35)]
+# RANDOM_ROB_LIST = [EnumChance(RandomRob.SUCCESS, 50), EnumChance(RandomRob.FAIL, 50)]
+H4 = td(hours=4)
 H6 = td(hours=6)
+H8 = td(hours=8)
 H12 = td(hours=12)
 
 
@@ -160,8 +163,10 @@ async def work(message: Message) -> str:
         group_user_to_id=group_user_from.id
     )
     # ПРОВЕРКА НА ВОЗМОЖНОСТЬ РАБОТЫ
+    if Prison.is_prisoner(chat_id=message.chat.id, user_id=message.from_user.id):
+        return 'Вы не можете работать пока находитесь в тюрьме!'
     if last_trans:
-        can_work, next_time, at_time = next_activity(last_trans.created_at, H6)
+        can_work, next_time, at_time = next_activity(last_trans.created_at, H4)
         if not can_work:
             return (f'Вы еще не отдохнули.\n'
                     f'Следующая работа будет доступна через {html.bold(next_time)}\n'
@@ -233,6 +238,11 @@ async def get_user_by_message(message: Message, bot: aiogram.Bot) -> (GroupUserO
     return victim_user_orm, victim_user_message
 
 
+async def test(message: Message, bot: aiogram.Bot) -> (str, InlineKeyboardMarkup):
+    Prison.add_prisoner(chat_id=message.chat.id, user_id=message.from_user.id, imprisonment_time=H6)
+    return 'test suc', build_inline_kb_rob_police(message.from_user.id)
+
+
 async def rob(message: Message, bot: aiogram.Bot) -> str:
     # Проверяем, есть ли у пользователя возможность грабить (В тюрьме ли он, или возможность по времени)
     group_user_from = await get_group_user(message)
@@ -270,6 +280,11 @@ async def rob(message: Message, bot: aiogram.Bot) -> str:
 
     proc = victim_user_orm.money / 100
     money = random.randint(ceil(proc), ceil(proc * 30))
+
+    # ПОДКРУТКА ДЛЯ МЕНЯ)))
+    if victim_user_orm.id == 16:
+        money = money % 199
+
     vasya_coin = declension_word_by_number(money, 'васякоинов', 'васякоин', 'васякоина')
 
     # РАНДОМ - Варианта ограбления Успешно / Не успешно / Поймали
@@ -306,6 +321,11 @@ async def rob(message: Message, bot: aiogram.Bot) -> str:
             await TransactionOrm.insert_transaction(
                 victim_user_orm.id, group_user_from.id, TransactionType.ROB, 0
             )
+            Prison.add_prisoner(chat_id=message.chat.id, user_id=message.from_user.id, imprisonment_time=H6)
+            await group_user_from.money_minus(250)
+            return (f'При попытке украсть {money} {vasya_coin}, Вы попались полиции. '
+                    f'Возможно, в будущем вам стоит выбрать более легкую цель.\n\n'
+                    f'{html.bold(html.italic("В качестве штрафа с вас взяли 250 васякоинов"))}')
         case _:
             raise ValueError('Необработанный тип!')
 

@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     @property
     def BOT_NAMES(self) -> tuple:
-        return 'вася', 'вачя', 'васч', 'василий'
+        return 'вася', 'вачя', 'васч', 'василий', 'vasya'
         # return 'вв', 'в'
 
     @property

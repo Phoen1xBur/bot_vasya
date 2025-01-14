@@ -11,6 +11,8 @@ class ChatTypeFilter(BaseFilter):
         self.chat_type = chat_type
 
     async def __call__(self, message: Message) -> bool:
+        if not isinstance(message, Message):
+            return True
         if isinstance(self.chat_type, ChatType):
             return message.chat.type == self.chat_type
         else:

@@ -87,6 +87,7 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
             command = CommandCat(chat_id=chat_id, text=text)
         case 'кража', *text:
             answer = await func.rob(message, bot)
+            print(answer)
             command = SendMessage(chat_id=chat_id, text=answer)
         case 'перевод', *text:
             answer = await func.transfer(message, bot, text)
@@ -96,6 +97,9 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
             command = SendMessage(chat_id=chat_id, text=answer)
         case 'топ', *text:
             return await top_users(message)
+        case ('тест' | 'test', ):
+            answer, keyboard = await func.test(message, bot)
+            command = SendMessage(chat_id=chat_id, text=answer, reply_markup=keyboard)
         case _:
             command = CommandUndefined(chat_id=chat_id)
     if command:

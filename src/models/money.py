@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from config import redis
@@ -99,15 +99,16 @@ class Prison:
         table_name = cls._get_table_name(chat_id, user_id)
         return cls._redis.keys(table_name)
 
-    def add_prisoner(self, chat_id: str | int, user_id: str | int, imprisonment_time: int) -> None:
+    @classmethod
+    def add_prisoner(cls, chat_id: str | int, user_id: str | int, imprisonment_time: int | timedelta) -> None:
         """Добавляет пользователя в тюрьму
 
         :param chat_id: id чата
         :param user_id: id пользователя
         :param imprisonment_time: время заключения в секундах
         """
-        table_name = self._get_table_name(chat_id, user_id)
-        self._redis.set(table_name, 1, ex=imprisonment_time)
+        table_name = cls._get_table_name(chat_id, user_id)
+        cls._redis.set(table_name, 1, ex=imprisonment_time)
 
 
 class Rob:
