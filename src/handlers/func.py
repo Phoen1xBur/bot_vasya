@@ -344,7 +344,9 @@ async def rob(message: Message, bot: aiogram.Bot) -> str:
             Prison.add_prisoner(chat_id=message.chat.id, user_id=message.from_user.id, imprisonment_time=H6)
             await group_user_from.money_minus(100)
             return (f'При попытке украсть {money} {vasya_coin}, Вы попались полиции. '
-                    f'Возможно, в будущем вам стоит выбрать более легкую цель.\n\n'
+                    f'Возможно, в будущем вам стоит выбрать более легкую цель.\n'
+                    f'Вас отправили в тюрьму на 6 часов.\n'
+                    f'{html.italic(html.underline("Не поднимайте мыло с пола..."))}\n\n'
                     f'{html.bold(html.italic("В качестве штрафа с вас взяли 100 васякоинов"))}')
         case _:
             raise ValueError('Необработанный тип!')
