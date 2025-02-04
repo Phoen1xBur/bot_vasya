@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     API_HASH: str
     REDIS_HOST: str
     REDIS_PORT: int
+    ENABLE_VOICE: bool  # Вкл./Выкл. расшифровки голосовых сообщений
 
     @property
     def BOT_NAMES(self) -> tuple:

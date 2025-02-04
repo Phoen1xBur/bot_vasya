@@ -32,6 +32,7 @@ async def rob_police_handler_yes(callback_query: CallbackQuery):
             reply_markup=build_inline_kb_rob_police(callback_query.from_user.id)
         )
     except TelegramBadRequest:
+        # Ошибка - скорее всего сообщение не изменилось
         pass
 
 

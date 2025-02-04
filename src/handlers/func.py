@@ -26,7 +26,7 @@ H8 = td(hours=8)
 H12 = td(hours=12)
 
 
-def declension_word_by_number(number: int, word_form_0, word_form_1, word_form_2: str):
+def declension_word_by_number(number: int, word_form_0: str, word_form_1: str, word_form_2: str):
     """Возвращает склоняемое слово относительно числа
     example:
     declension_word_by_number(1, 'день', 'дня', 'дней') -> 'день'
@@ -101,6 +101,14 @@ async def set_chance(message: Message, chance: int):
     return answer
 
 
+async def get_chance(message: Message):
+    chance = (await TelegramChatOrm.get_chance(message.chat.id)).answer_chance
+    answer = (f'Шанс сообщения в группе {chance}%\n'
+              f'Для изменения шанса напишите "Вася шанс [число шанса от 0 до 100]"')
+
+    return answer, chance
+
+
 def choice_words(words):
     answer = 'Непредвиденная ошибка. Обратитесь в тех. поддержку'
 
@@ -138,6 +146,17 @@ async def yesno() -> tuple:
     return animation, answer_ru
 
 
+def next_activity_from_seconds(next_activity_seconds: int) -> (str, str):
+    delta = td(seconds=next_activity_seconds)
+    next_activity_time = dt.now() + delta
+    hours, minutes = next_activity_seconds // 3600, next_activity_seconds % 3600 // 60
+    hours_str = declension_word_by_number(hours, 'часов', 'час', 'часа')
+    minutes_str = declension_word_by_number(minutes, 'минут', 'минута', 'минуты')
+    hours_and_minutes_str = f'{hours} {hours_str} {minutes} {minutes_str}'
+    next_time = hours_and_minutes_str
+    at_time = next_activity_time.strftime("%Y-%m-%d в %H:%M:%S")
+    return next_time, at_time
+
 def next_activity(created_at: datetime, after_time: td = H6) -> (bool, str, str):
     delta = dt.now() - created_at
     can_activity = after_time < delta
@@ -163,8 +182,12 @@ async def work(message: Message) -> str:
         group_user_to_id=group_user_from.id
     )
     # ПРОВЕРКА НА ВОЗМОЖНОСТЬ РАБОТЫ
-    if Prison.is_prisoner(chat_id=message.chat.id, user_id=message.from_user.id):
-        return 'Вы не можете работать пока находитесь в тюрьме!'
+    is_prisoner, prison_time = Prison.is_prisoner(chat_id=message.chat.id, user_id=message.from_user.id)
+    if is_prisoner:
+        next_time, at_time = next_activity_from_seconds(prison_time)
+        return (f'Вы не можете работать пока находитесь в тюрьме!\n'
+                f'Следующая работа будет доступна через {html.bold(next_time)}\n'
+                f'{html.italic(at_time)} (GMT+3)')
     if last_trans:
         can_work, next_time, at_time = next_activity(last_trans.created_at, H4)
         if not can_work:
@@ -251,8 +274,12 @@ async def rob(message: Message, bot: aiogram.Bot) -> str:
         group_user_to_id=group_user_from.id
     )
     # ПРОВЕРКА НА ВОЗМОЖНОСТЬ КРАЖИ
-    if Prison.is_prisoner(chat_id=message.chat.id, user_id=message.from_user.id):
-        return 'Вы не можете грабить пока находитесь в тюрьме!'
+    is_prisoner, prison_time = Prison.is_prisoner(chat_id=message.chat.id, user_id=message.from_user.id)
+    if is_prisoner:
+        next_time, at_time = next_activity_from_seconds(prison_time)
+        return (f'Вы не можете красть пока находитесь в тюрьме!\n'
+                f'Следующая кража будет доступна через {html.bold(next_time)}\n'
+                f'{html.italic(at_time)} (GMT+3)')
     if last_trans:
         can_rob, next_time, at_time = next_activity(last_trans.created_at, H6)
         if not can_rob:
@@ -272,18 +299,11 @@ async def rob(message: Message, bot: aiogram.Bot) -> str:
     if message.from_user.id == victim_user_message.id:
         return 'Нельзя воровать у самого себя!'
 
-    if Prison.is_prisoner(chat_id=message.chat.id, user_id=victim_user_message.id):
-        return 'Этот пользователь в тюрьме!'
-
     if victim_user_orm.money < 10:
         return 'У этого пользователя недостаточно денег!'
 
     proc = victim_user_orm.money / 100
     money = random.randint(ceil(proc), ceil(proc * 30))
-
-    # ПОДКРУТКА ДЛЯ МЕНЯ)))
-    if victim_user_orm.id == 16:
-        money = money % 199
 
     vasya_coin = declension_word_by_number(money, 'васякоинов', 'васякоин', 'васякоина')
 
@@ -322,10 +342,10 @@ async def rob(message: Message, bot: aiogram.Bot) -> str:
                 victim_user_orm.id, group_user_from.id, TransactionType.ROB, 0
             )
             Prison.add_prisoner(chat_id=message.chat.id, user_id=message.from_user.id, imprisonment_time=H6)
-            await group_user_from.money_minus(250)
+            await group_user_from.money_minus(100)
             return (f'При попытке украсть {money} {vasya_coin}, Вы попались полиции. '
                     f'Возможно, в будущем вам стоит выбрать более легкую цель.\n\n'
-                    f'{html.bold(html.italic("В качестве штрафа с вас взяли 250 васякоинов"))}')
+                    f'{html.bold(html.italic("В качестве штрафа с вас взяли 100 васякоинов"))}')
         case _:
             raise ValueError('Необработанный тип!')
 
@@ -346,8 +366,12 @@ async def transfer(message: Message, bot: aiogram.Bot, money: list[Any]) -> str:
     if group_user_orm_from.money < money:
         return 'У вас недостаточно денег!'
     # Проверка в тюрьме ли человек, который переводит
-    if Prison.is_prisoner(chat_id=message.chat.id, user_id=message.from_user.id):
-        return 'Вы не можете переводить пока находитесь в тюрьме!'
+    is_prisoner, prison_time = Prison.is_prisoner(chat_id=message.chat.id, user_id=message.from_user.id)
+    if is_prisoner:
+        next_time, at_time = next_activity_from_seconds(prison_time)
+        return (f'Вы не можете переводить пока находитесь в тюрьме!\n'
+                f'Следующая возможность для перевода будет доступна через {html.bold(next_time)}\n'
+                f'{html.italic(at_time)} (GMT+3)')
 
     # Находим пользователя, которому нужно перевести
     user_orm_to: GroupUserOrm
@@ -358,10 +382,6 @@ async def transfer(message: Message, bot: aiogram.Bot, money: list[Any]) -> str:
 
     if message.from_user.id == user_message_to.id:
         return 'Нельзя переводить самому себе!'
-
-    # Проверка в тюрьме ли человек, которому нужно перевести
-    if Prison.is_prisoner(chat_id=message.chat.id, user_id=user_message_to.id):
-        return 'Вы не можете грабить пока находитесь в тюрьме!'
 
     await TransactionOrm.insert_transaction(
         group_user_orm_from.id, user_orm_to.id, TransactionType.USER_TRANSFER, money
@@ -374,8 +394,12 @@ async def transfer(message: Message, bot: aiogram.Bot, money: list[Any]) -> str:
 
 async def kill(message: Message, bot: aiogram.Bot) -> str:
     # Проверка в тюрьме ли человек, который убивает
-    if Prison.is_prisoner(chat_id=message.chat.id, user_id=message.from_user.id):
-        return 'Вы не можете убивать пока находитесь в тюрьме!'
+    is_prisoner, prison_time = Prison.is_prisoner(chat_id=message.chat.id, user_id=message.from_user.id)
+    if is_prisoner:
+        next_time, at_time = next_activity_from_seconds(prison_time)
+        return (f'Вы не можете убивать пока находитесь в тюрьме!\n'
+                f'Следующая активность будет доступна через {html.bold(next_time)}\n'
+                f'{html.italic(at_time)} (GMT+3)')
 
     # Находим пользователя, которого нужно убить
     user_orm_to: GroupUserOrm
@@ -391,10 +415,6 @@ async def kill(message: Message, bot: aiogram.Bot) -> str:
 
 
 async def get_top_users_money(message: Message, *, limit: int = 10) -> str:
-    # Проверка в тюрьме ли человек
-    if Prison.is_prisoner(chat_id=message.chat.id, user_id=message.from_user.id):
-        return 'Вы не можете смотреть топ пока находитесь в тюрьме!'
-
     # Получаем список пользователей
     users = await GroupUserOrm.get_group_users_top_money_by_telegram_chat_id(message.chat.id, limit=limit)
     limit_count = limit if len(users) > limit else len(users)
