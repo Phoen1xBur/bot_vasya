@@ -53,11 +53,14 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
             command = SendMessage(chat_id=chat_id, text=answer)
         case 'шанс', *chance:
             if group_user.chat_member_status in func.MEMBER_TYPE_ADMIN:
-                chance = chance[0] if len(chance) > 0 else -1
-                answer = await func.set_chance(message, chance)
+                if len(chance) > 0:
+                    chance = chance[0]
+                    answer = await func.set_chance(message, chance)
+                else:
+                    answer, chance = await func.get_chance(message)
                 redis.set(f'tg_chat_chance:{message.chat.id}', chance, ex=120)
             else:
-                answer = 'Эта привилегия доступна только для администраторов группы'
+                answer = 'Эта команда доступна только для администраторов группы'
             command = SendMessage(chat_id=chat_id, text=answer)
         case 'ответь', *words:
             animation, answer = await func.yesno()

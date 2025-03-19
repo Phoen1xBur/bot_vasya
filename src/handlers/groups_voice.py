@@ -10,6 +10,8 @@ from . import func
 from utils.filters import ChatTypeFilter, MessageTypeFilter
 from utils.enums import ChatType, ContentType
 
+from config import settings
+
 router = Router(name=__name__)
 router.message.filter(
     # События только из:
@@ -29,7 +31,9 @@ router.message.filter(
     # F.forward_origin is None
 )
 
-stt = STT()
+stt = None
+if settings.ENABLE_VOICE:
+    stt = STT()
 
 
 @router.message()
@@ -37,6 +41,8 @@ async def groups_voice(message: Message, bot: aiogram.Bot):
     """
     Обработка голосовых сообщений в группах, возвращение расшифровки голоса
     """
+    if not stt:
+        return
     # Получаем голосовое сообщение
     voice = message.voice
     if not voice:
@@ -45,7 +51,7 @@ async def groups_voice(message: Message, bot: aiogram.Bot):
     if 0 > voice.duration > 60 * 3:
         return
 
-    # Получаем файл голосового сообщенияahah
+    # Получаем файл голосового сообщения
     file = await bot.get_file(message.voice.file_id)
     file_path = file.file_path
     file_on_disk = Path('', f'{message.voice.file_id}.tmp')

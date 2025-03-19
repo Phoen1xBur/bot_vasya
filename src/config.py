@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     REDIS_HOST: str
     REDIS_PORT: int
     REDIS_PASSWORD: str
+    ENABLE_VOICE: bool  # Вкл./Выкл. расшифровки голосовых сообщений
 
     @property
     def BOT_NAMES(self) -> tuple:
@@ -75,8 +76,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-redis = redis_package.Redis(
-    host=settings.REDIS_HOST, port=settings.REDIS_PORT,
-    password=settings.REDIS_PASSWORD,
-    decode_responses=True,
-)
+redis = redis_package.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, decode_responses=True)

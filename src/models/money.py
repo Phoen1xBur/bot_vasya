@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Any
 
 from config import redis
 from sqlalchemy import ForeignKey
@@ -95,9 +95,9 @@ class Prison:
         return f'{cls.__tablename}_{chat_id}_{user_id}'
 
     @classmethod
-    def is_prisoner(cls, chat_id: str | int, user_id: str | int) -> bool:
+    def is_prisoner(cls, chat_id: str | int, user_id: str | int) -> (Any, int):
         table_name = cls._get_table_name(chat_id, user_id)
-        return cls._redis.keys(table_name)
+        return cls._redis.keys(table_name), cls._redis.ttl(table_name)
 
     @classmethod
     def add_prisoner(cls, chat_id: str | int, user_id: str | int, imprisonment_time: int | timedelta) -> None:
