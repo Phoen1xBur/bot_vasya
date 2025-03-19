@@ -150,7 +150,10 @@ async def echo(message: Message):
         chance = None
     if chance is None:
         chance = (await TelegramChatOrm.get_chance(message.chat.id)).answer_chance
-        redis.set(f'tg_chat_chance:{message.chat.id}', chance, ex=120)
+        try:
+            redis.set(f'tg_chat_chance:{message.chat.id}', chance, ex=120)
+        except Exception as e:
+            print(f'Redis error: {e}')
     if random.randint(1, 100) <= int(chance):
         messages = [msg.text for msg in await MessageOrm.get_messages(message.chat.id)]
         text = generate_text(messages)

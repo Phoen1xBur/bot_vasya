@@ -3,4 +3,4 @@
 /.env
 /vasya_fun_bot.session
 /src/vasya_fun_bot.session
-/src/utils/models/vosk/
+/src/utils/models/

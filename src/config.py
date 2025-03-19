@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     API_HASH: str
     REDIS_HOST: str
     REDIS_PORT: int
+    REDIS_PASSWORD: str
 
     @property
     def BOT_NAMES(self) -> tuple:
@@ -74,4 +75,8 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-redis = redis_package.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, decode_responses=True)
+redis = redis_package.Redis(
+    host=settings.REDIS_HOST, port=settings.REDIS_PORT,
+    password=settings.REDIS_PASSWORD,
+    decode_responses=True,
+)
