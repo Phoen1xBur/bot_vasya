@@ -76,4 +76,8 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-redis = redis_package.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, decode_responses=True)
+redis = redis_package.Redis(
+    host=settings.REDIS_HOST, port=settings.REDIS_PORT,
+    password=settings.REDIS_PASSWORD,
+    decode_responses=True,
+)
