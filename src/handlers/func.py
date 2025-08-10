@@ -26,7 +26,7 @@ H8 = td(hours=8)
 H12 = td(hours=12)
 
 
-def declension_word_by_number(number: int, word_form_0: str, word_form_1: str, word_form_2: str):
+def declension_word_by_number(number: int, word_form_0: str, word_form_1: str, word_form_2: str) -> str:
     """Возвращает склоняемое слово относительно числа
     example:
     declension_word_by_number(1, 'день', 'дня', 'дней') -> 'день'
@@ -40,7 +40,7 @@ def declension_word_by_number(number: int, word_form_0: str, word_form_1: str, w
         return word_form_0
 
 
-async def get_group_user(message: Message):
+async def get_group_user(message: Message) -> GroupUserOrm:
     group_user: GroupUserOrm = await GroupUserOrm.get_group_user(message.from_user.id, message.chat.id)
     if not group_user:
         await TelegramChatOrm.insert_or_update_telegram_chat(message.chat.id)
@@ -49,7 +49,7 @@ async def get_group_user(message: Message):
     return group_user
 
 
-async def update_users(event: ChatMemberUpdated | Message):
+async def update_users(event: ChatMemberUpdated | Message) -> None:
     async with app:
         async for member in app.get_chat_members(event.chat.id):
             if member.user.is_bot:
@@ -60,7 +60,7 @@ async def update_users(event: ChatMemberUpdated | Message):
             )
 
 
-async def update_user(event: ChatMemberUpdated):
+async def update_user(event: ChatMemberUpdated) -> None:
     async with app:
         try:
             member = await app.get_chat_member(event.chat.id, event.new_chat_member.user.id)
@@ -87,7 +87,7 @@ async def get_user_by_username(chat_id: int, username: str) -> pyrogram.types.Us
         return member
 
 
-async def set_chance(message: Message, chance: int):
+async def set_chance(message: Message, chance: int) -> str:
     answer_error = 'Шанс должен быть числом от 0 до 100'
     try:
         chance = int(chance)
@@ -101,7 +101,7 @@ async def set_chance(message: Message, chance: int):
     return answer
 
 
-async def get_chance(message: Message):
+async def get_chance(message: Message) -> (str, int):
     chance = (await TelegramChatOrm.get_chance(message.chat.id)).answer_chance
     answer = (f'Шанс сообщения в группе {chance}%\n'
               f'Для изменения шанса напишите "Вася шанс [число шанса от 0 до 100]"')
@@ -109,7 +109,7 @@ async def get_chance(message: Message):
     return answer, chance
 
 
-def choice_words(words):
+def choice_words(words) -> str:
     answer = 'Непредвиденная ошибка. Обратитесь в тех. поддержку'
 
     words_lower = list(map(lambda text: text.lower(), words))
@@ -128,7 +128,7 @@ def choice_words(words):
     return answer
 
 
-async def yesno() -> tuple:
+async def yesno() -> (str, str):
     url = 'https://yesno.wtf/api'
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
@@ -147,6 +147,11 @@ async def yesno() -> tuple:
 
 
 def next_activity_from_seconds(next_activity_seconds: int) -> (str, str):
+    """
+
+    :param next_activity_seconds: секунды до возможной следующей активности
+    :return: возвращает две строки, первая: сколько до следующей активности осталось, часов, минут; вторая: точное время
+    """
     delta = td(seconds=next_activity_seconds)
     next_activity_time = dt.now() + delta
     hours, minutes = next_activity_seconds // 3600, next_activity_seconds % 3600 // 60
@@ -157,7 +162,13 @@ def next_activity_from_seconds(next_activity_seconds: int) -> (str, str):
     at_time = next_activity_time.strftime("%Y-%m-%d в %H:%M:%S")
     return next_time, at_time
 
+
 def next_activity(created_at: datetime, after_time: td = H6) -> (bool, str, str):
+    """Проверка возможности активности относительно сравнения текущего времени, и возможной следующей активности
+    created_at: Начало прошлой активности
+    after_time: Начало следующей возможной активности
+    :return: (Возможность активности, следующая активность через, время следующей активности)
+    """
     delta = dt.now() - created_at
     can_activity = after_time < delta
     next_time = ''
@@ -175,7 +186,6 @@ def next_activity(created_at: datetime, after_time: td = H6) -> (bool, str, str)
 
 
 async def work(message: Message) -> str:
-    m_user = message.from_user
     group_user_from = await get_group_user(message)
     last_trans = await TransactionOrm.get_last_transaction_by_params(
         transaction_type=TransactionType.WORK,
@@ -203,7 +213,7 @@ async def work(message: Message) -> str:
     await TransactionOrm.insert_transaction(None, group_user_from.id, TransactionType.WORK, income)
 
     work_text = (
-        f'{m_user.mention_html(m_user.username)} устраивается на должность {html.bold(html.italic(profession.name))} '
+        f'{await group_user_from.mention_link_html()} устраивается на должность {html.bold(html.italic(profession.name))} '
         f'и зарабатывает {income} {vasya_coin}'
     )
     if profession.accompanying_text:
@@ -211,19 +221,42 @@ async def work(message: Message) -> str:
     return work_text
 
 
-async def profile(message: Message) -> str:
+async def profile(message: Message) -> (str, UserOrm):
     m_user = message.from_user
-    user = await GroupUserOrm.get_group_user(m_user.id, message.chat.id)
-    vasya_coin = declension_word_by_number(user.money, 'васякоинов', 'васякоин', 'васякоина')
+    user_orm = await GroupUserOrm.get_group_user(m_user.id, message.chat.id)
+    vasya_coin = declension_word_by_number(user_orm.money, 'васякоинов', 'васякоин', 'васякоина')
     await UserOrm.insert_or_update_user(
-        user.user_id,
+        user_orm.user_id,
         first_name=m_user.first_name,
         last_name=m_user.last_name,
         username=m_user.username
     )
 
     profile_text = f'''Профиль:
-    {html.bold('Пользователь')}: {m_user.mention_html(m_user.username)}
+    {html.bold('Пользователь')}: {await user_orm.mention_link_html()}
+    {html.bold('Баланс')}: {user_orm.money} {vasya_coin}'''
+
+    return profile_text, user_orm
+
+
+async def profile_for_chat(user_id: int, chat_id: int) -> str:
+    # Получаем пользователя Telegram
+    # Здесь можно использовать pyrogram для получения данных
+    # или сохранять их в БД при первом взаимодействии
+
+    # Получаем данные из БД
+    user = await GroupUserOrm.get_group_user(user_id, chat_id)
+    if not user:
+        return "Пользователь не найден в этом чате"
+
+    # Получаем основные данные пользователя
+    db_user = await UserOrm.get_user_by_id(user_id)
+
+    vasya_coin = declension_word_by_number(user.money, 'васякоинов', 'васякоин', 'васякоина')
+
+    username_display = f"@{db_user.username}" if db_user.username else db_user.first_name
+    profile_text = f'''Профиль в этом чате:
+    {html.bold('Пользователь')}: {username_display}
     {html.bold('Баланс')}: {user.money} {vasya_coin}'''
 
     return profile_text
@@ -318,7 +351,7 @@ async def rob(message: Message, bot: aiogram.Bot) -> str:
             )
             await group_user_from.money_plus(money)
             await victim_user_orm.money_minus(money)
-            return f"Вы украли у {victim_user_message.mention_html()} {money} {vasya_coin}"
+            return f"Вы украли у {await victim_user_orm.mention_link_html()} {money} {vasya_coin}"
         case RandomRob.FAIL:
             await TransactionOrm.insert_transaction(
                 victim_user_orm.id, group_user_from.id, TransactionType.ROB, 0
@@ -391,7 +424,7 @@ async def transfer(message: Message, bot: aiogram.Bot, money: list[Any]) -> str:
     await group_user_orm_from.money_minus(money)
     await user_orm_to.money_plus(money)
     vasya_coin = declension_word_by_number(money, 'васякоинов', 'васякоин', 'васякоина')
-    return f"Вы перевели {user_message_to.mention_html()} {money} {vasya_coin}"
+    return f"Вы перевели {await user_orm_to.mention_link_html()} {money} {vasya_coin}"
 
 
 async def kill(message: Message, bot: aiogram.Bot) -> str:
@@ -413,7 +446,7 @@ async def kill(message: Message, bot: aiogram.Bot) -> str:
     if message.from_user.id == user_message_to.id:
         return 'Нельзя убить самого себя!'
 
-    return html.bold(f'🔫 Вы застрелили пользователя {user_message_to.mention_html()}!')
+    return html.bold(f'🔫 Вы застрелили пользователя {await user_orm_to.mention_link_html()}!')
 
 
 async def get_top_users_money(message: Message, *, limit: int = 10) -> str:

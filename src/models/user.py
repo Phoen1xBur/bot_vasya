@@ -16,6 +16,18 @@ class UserOrm(Base):
     rank: Mapped[Rank] = mapped_column(default=Rank.USER)
 
     @staticmethod
+    async def get_user_by_id(user_id: int):
+        async with async_session_factory() as session:
+            query = (
+                select(UserOrm)
+                .filter(
+                    UserOrm.user_id.__eq__(user_id)
+                )
+            )
+            result = await session.execute(query)
+            return result.scalars().first()
+
+    @staticmethod
     async def insert_or_update_user(user_id: int, user: pyrogram.types.User = None, **kwargs):
         async with async_session_factory() as session:
             query = (
@@ -36,9 +48,9 @@ class UserOrm(Base):
                 )
                 session.add(new_user)
             else:
-                _user.first_name = None if user is None else user.first_name
-                _user.last_name = None if user is None else user.last_name
-                _user.username = None if user is None else user.username
+                # _user.first_name = None if user is None else user.first_name
+                # _user.last_name = None if user is None else user.last_name
+                # _user.username = None if user is None else user.username
                 for key, value in kwargs.items():
                     if hasattr(_user, key):
                         setattr(_user, key, value)
