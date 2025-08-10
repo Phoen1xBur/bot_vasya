@@ -12,7 +12,7 @@ class MessageOrm(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     group_user_id: Mapped[int] = mapped_column(ForeignKey('group_user.id', ondelete='CASCADE'), index=True)
-    group_user: Mapped[GroupUserOrm] = relationship()
+    group_user: Mapped[GroupUserOrm] = relationship(viewonly=True)
     text: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
 

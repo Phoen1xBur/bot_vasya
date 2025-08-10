@@ -1,6 +1,7 @@
-from . import rob_police
+from . import rob_police, profile
 
 
 routers = [
-    rob_police.router
+    rob_police.router,
+    profile.router,
 ]

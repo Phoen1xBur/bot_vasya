@@ -9,6 +9,8 @@ from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
 
+from keyboards.inline_kb_profile_change_settings import profile_change_settings
+from keyboards.webapp_test import build_inline_kb_start
 from . import func
 from config import settings
 from models import MessageOrm, TelegramChatOrm, GroupUserOrm
@@ -83,8 +85,7 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
         case 'кто' | 'кого', *words:
             members = await GroupUserOrm.get_groups_user_by_telegram_chat_id(message.chat.id)
             random_member: GroupUserOrm = random.choice(members)
-            member = await bot.get_chat_member(random_member.telegram_chat_id, random_member.user_id)
-            answer = f'Я думаю {member.user.mention_html()} ' + ' '.join(words)
+            answer = f'Я думаю {await random_member.mention_link_html()} ' + ' '.join(words)
             command = SendMessage(chat_id=chat_id, text=answer)
         case 'кот', *text:
             command = CommandCat(chat_id=chat_id, text=text)
@@ -111,8 +112,15 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
 
 @router.message(Command('profile'))
 async def profile(message: Message):
-    answer = await func.profile(message)
-    await message.answer(answer)
+    answer, user_orm = await func.profile(message)
+    notification = '❌ Выключить' if user_orm.can_tag else '✅ Включить'
+    await message.answer(
+        answer, reply_markup=await profile_change_settings(
+            message.from_user.id,
+            message.chat.id,
+            notification
+        )
+    )
 
 
 @router.message(Command('top_users'))
@@ -161,3 +169,9 @@ async def echo(message: Message):
         messages = [msg.text for msg in await MessageOrm.get_messages(message.chat.id)]
         text = generate_text(messages)
         await message.answer(text)
+
+
+@router.message(Command('profile_test'))
+async def profile_test(message: Message):
+    inline_kb = await build_inline_kb_start(message.chat.id, 'profile')
+    await message.answer('Быстрее смотри свой профиль!', reply_markup=inline_kb)

@@ -1,5 +1,5 @@
 from aiogram import Router, Bot
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command
 from aiogram.types import Message
 
 from .command import CommandStart, CommandHelp
