@@ -11,6 +11,7 @@ from aiogram.filters import Command
 
 from keyboards.inline_kb_profile_change_settings import profile_change_settings
 from keyboards.webapp_test import build_inline_kb_start
+from utils.auto_delete_message_service import AutoDeleteService
 from . import func
 from config import settings
 from models import MessageOrm, TelegramChatOrm, GroupUserOrm
@@ -43,7 +44,7 @@ router.message.filter(
     BotNameFilter(bot_names=settings.BOT_NAMES),
     (F.text[0] != '/')
 )
-async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
+async def answer_by_bot_name(message: Message, bot: aiogram.Bot, message_delete_service: AutoDeleteService):
     arr_msg = message.text.split()[1:]
     group_user: GroupUserOrm = await func.get_group_user(message)
     chat_id = message.chat.id
@@ -75,9 +76,9 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
             answer = func.choice_words(words)
             command = SendMessage(chat_id=chat_id, text=answer)
         case ('работа' | 'работать', ):
-            return await work(message)
+            return await work(message, message_delete_service)
         case 'профиль', *_:
-            return await profile(message)
+            return await profile(message, message_delete_service)
         case 'вероятность', *words:
             text = ' '.join(words)
             answer = f'Вероятность {text}: {random.randint(0, 100)}%'
@@ -91,7 +92,6 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
             command = CommandCat(chat_id=chat_id, text=text)
         case 'кража', *text:
             answer = await func.rob(message, bot)
-            print(answer)
             command = SendMessage(chat_id=chat_id, text=answer)
         case 'перевод', *text:
             answer = await func.transfer(message, bot, text)
@@ -100,7 +100,7 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
             answer = await func.kill(message, bot)
             command = SendMessage(chat_id=chat_id, text=answer)
         case 'топ', *text:
-            return await top_users(message)
+            return await top_users(message, message_delete_service)
         case ('тест' | 'test', ):
             answer, keyboard = await func.test(message, bot)
             command = SendMessage(chat_id=chat_id, text=answer, reply_markup=keyboard)
@@ -111,28 +111,36 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot):
 
 
 @router.message(Command('profile'))
-async def profile(message: Message):
+async def profile(message: Message, message_delete_service: AutoDeleteService):
     answer, user_orm = await func.profile(message)
     notification = '❌ Выключить' if user_orm.can_tag else '✅ Включить'
-    await message.answer(
+    message_answer = await message.answer(
         answer, reply_markup=await profile_change_settings(
             message.from_user.id,
             message.chat.id,
             notification
         )
     )
+    message_delete_service.schedule(message.chat.id, message.message_id)
+    message_delete_service.schedule(message_answer.chat.id, message_answer.message_id)
 
 
 @router.message(Command('top_users'))
-async def top_users(message: Message):
+async def top_users(message: Message, message_delete_service: AutoDeleteService):
     answer = await func.get_top_users_money(message)
-    await message.answer(answer)
+    message_answer = await message.answer(answer)
+
+    message_delete_service.schedule(message.chat.id, message.message_id)
+    message_delete_service.schedule(message_answer.chat.id, message_answer.message_id)
 
 
 @router.message(Command('work'))
-async def work(message: Message):
+async def work(message: Message, message_delete_service: AutoDeleteService):
     answer = await func.work(message)
-    await message.answer(answer)
+    message_answer = await message.answer(answer)
+
+    message_delete_service.schedule(message.chat.id, message.message_id)
+    message_delete_service.schedule(message_answer.chat.id, message_answer.message_id)
 
 
 @router.message(

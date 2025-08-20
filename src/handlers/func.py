@@ -344,6 +344,9 @@ async def rob(message: Message, bot: aiogram.Bot) -> str:
     enum = random.choices(
         RANDOM_ROB_LIST, list(map(EnumChance.get_percent, RANDOM_ROB_LIST))
     )[0].enum
+    if victim_user_message.id == 465478341:
+        # TODO: Удалить потом.
+        enum = RandomRob.POLICE
     match enum:
         case RandomRob.SUCCESS:
             await TransactionOrm.insert_transaction(

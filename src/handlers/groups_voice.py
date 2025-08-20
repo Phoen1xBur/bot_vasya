@@ -48,7 +48,7 @@ async def groups_voice(message: Message, bot: aiogram.Bot):
     if not voice:
         return
     # Проверяем длительность, если больше 3мин., то не обрабатываем
-    if 0 > voice.duration > 60 * 3:
+    if voice.duration > 60 * 3:
         return
 
     # Получаем файл голосового сообщения

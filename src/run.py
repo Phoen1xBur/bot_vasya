@@ -8,7 +8,8 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 import os
 
-from config import settings
+from config import settings, redis
+from utils.auto_delete_message_service import AutoDeleteService
 
 """Fix utils"""
 from utils.fix.fix_pyrogram import *  # noqa
@@ -18,6 +19,8 @@ from utils.fix.fix_pyrogram import *  # noqa
 # Инициализация бота и клиента
 bot = Bot(token=settings.TOKEN)
 dp = Dispatcher()
+
+auto_delete_service = AutoDeleteService(redis, bot)
 
 app = Client(
     'vasya_fun_bot',
@@ -48,8 +51,15 @@ if os.path.exists(webapp_static_path):
 async def start_bot():
     """Запуск Telegram бота"""
     from handlers import routers
+    from middleware import middlewares, auto_delete_message
 
     dp.include_routers(*routers)
+    dp.update.middleware(
+        auto_delete_message.AutoDeleteMiddleware(auto_delete_service)
+    )
+    for middleware in middlewares:
+        dp.update.middleware(middleware)
+
     await bot.set_my_commands(settings.MY_COMMANDS)
     bot.default.parse_mode = 'HTML'
 
@@ -83,9 +93,10 @@ async def on_startup():
     # Создаем задачи для бота и API
     bot_task = asyncio.create_task(start_bot())
     api_task = asyncio.create_task(start_fastapi())
+    auto_delete_messages_task = asyncio.create_task(auto_delete_service.run_cleaner())
 
-    # Ждем завершения обеих задач
-    await asyncio.gather(bot_task, api_task)
+    # Ждем завершения всех задач
+    await asyncio.gather(bot_task, api_task, auto_delete_messages_task)
 
 
 if __name__ == '__main__':
