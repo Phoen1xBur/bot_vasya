@@ -9,8 +9,9 @@ from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
 
+from keyboards.inline_kb_generate_start import build_inline_kb_start
 from keyboards.inline_kb_profile_change_settings import profile_change_settings
-from keyboards.webapp_test import build_inline_kb_start
+from keyboards.inline_kb_minigames import build_inline_kb_minigames_select
 from utils.auto_delete_message_service import AutoDeleteService
 from . import func
 from config import settings
@@ -101,6 +102,13 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot, message_delete_
             command = SendMessage(chat_id=chat_id, text=answer)
         case 'топ', *text:
             return await top_users(message, message_delete_service)
+        case ('minigames' | 'миниигры' | 'игры'), *_:
+            try:
+                redis.hset(f'mg:lobby:{chat_id}', mapping={'creator_id': message.from_user.id})
+            except Exception:
+                pass
+            keyboard = build_inline_kb_minigames_select()
+            command = SendMessage(chat_id=chat_id, text='Выберите мини-игру:', reply_markup=keyboard)
         case ('тест' | 'test', ):
             answer, keyboard = await func.test(message, bot)
             command = SendMessage(chat_id=chat_id, text=answer, reply_markup=keyboard)
@@ -132,6 +140,16 @@ async def top_users(message: Message, message_delete_service: AutoDeleteService)
 
     message_delete_service.schedule(message.chat.id, message.message_id)
     message_delete_service.schedule(message_answer.chat.id, message_answer.message_id)
+
+
+@router.message(Command('minigames'))
+async def minigames(message: Message):
+    try:
+        redis.hset(f'mg:lobby:{message.chat.id}', mapping={'creator_id': message.from_user.id})
+    except Exception:
+        pass
+    keyboard = build_inline_kb_minigames_select()
+    await message.answer('Выберите мини-игру:', reply_markup=keyboard)
 
 
 @router.message(Command('work'))
@@ -181,5 +199,11 @@ async def echo(message: Message):
 
 @router.message(Command('profile_test'))
 async def profile_test(message: Message):
-    inline_kb = await build_inline_kb_start(message.chat.id, 'profile')
+    inline_kb = await build_inline_kb_start(message.chat.id, 'profile', '📱 Открыть профиль')
     await message.answer('Быстрее смотри свой профиль!', reply_markup=inline_kb)
+
+
+@router.message(Command('casino'))
+async def casino(message: Message):
+    inline_kb = await build_inline_kb_start(message.chat.id, 'casino', '🎰 Открыть казино')
+    await message.answer('Вход в казино', reply_markup=inline_kb)

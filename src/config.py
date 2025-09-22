@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     REDIS_PORT: int
     REDIS_PASSWORD: str
     ENABLE_VOICE: bool  # Вкл./Выкл. расшифровки голосовых сообщений
+    ENV: str = 'development'  # development | production
+    LOG_DIR: str = 'logs'
+    LOG_LEVEL: str | None = None
 
     @property
     def BOT_NAMES(self) -> tuple:
@@ -56,6 +59,7 @@ class Settings(BaseSettings):
             BotCommand(command="work", description="Время работать и зарабатывать!"),
             BotCommand(command="profile", description="Информация о твоем профиле"),
             BotCommand(command="top_users", description="Топ пользователей по количеству денег"),
+            BotCommand(command="minigames", description="Показать доступные мини-игры"),
             # BotCommand(command="rob", description="Кража! Укради у ближнего своего"),
         ]
         return commands
