@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Header, HTTPException, Query
 
 from handlers.func import declension_word_by_number
@@ -7,7 +8,10 @@ from src.models.user import UserOrm
 from src.models.group_user import GroupUserOrm
 from src.database import async_session_factory
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/user",
+    tags=['Пользователь']
+)
 
 
 @router.get("/profile")
@@ -15,8 +19,10 @@ async def get_user_profile(
         chat_id: int = Query(None),
         authorization: str = Header()
 ):
+    logger = logging.getLogger(__name__)
     # Валидация авторизации
     if not validate_telegram_init_data(authorization, settings.TOKEN):
+        logger.warning("Неверный заголовок авторизации для /user/profile")
         raise HTTPException(status_code=401, detail="Invalid authorization")
 
     user_id = get_user_id_from_init_data(authorization)
@@ -29,6 +35,7 @@ async def get_user_profile(
             user = await UserOrm.get_user_by_id(user_id)
 
             if not user:
+                logger.info("Пользователь не найден: user_id=%s", user_id)
                 raise HTTPException(status_code=404, detail="User not found")
 
             # Если указан chat_id, получаем баланс для конкретного чата
@@ -54,7 +61,7 @@ async def get_user_profile(
         # Формируем ответ
         vasya_coin = declension_word_by_number(money, 'васякоинов', 'васякоин', 'васякоина')
 
-        return {
+        response = {
             "user_id": user_id,
             "username": user.username,
             "first_name": user.first_name,
@@ -64,6 +71,11 @@ async def get_user_profile(
             "vasya_coin": vasya_coin,
             "chat_id": chat_id
         }
+        logger.debug("Ответ /user/profile: %s", response)
+        return response
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        logger.exception("Внутренняя ошибка на /user/profile: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")

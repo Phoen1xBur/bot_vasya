@@ -1,5 +1,6 @@
 # run.py
 import asyncio
+import logging
 import uvicorn
 
 from aiogram import Bot, Dispatcher
@@ -8,16 +9,24 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 import os
 
-from config import settings
+from config import settings, redis
+from utils.logger import setup_logging
+from utils.auto_delete_message_service import AutoDeleteService
 
 """Fix utils"""
 from utils.fix.fix_pyrogram import *  # noqa
 
 """End fix"""
 
+# Логирование
+setup_logging(settings.ENV, settings.LOG_DIR, settings.LOG_LEVEL)
+logger = logging.getLogger(__name__)
+
 # Инициализация бота и клиента
 bot = Bot(token=settings.TOKEN)
 dp = Dispatcher()
+
+auto_delete_service = AutoDeleteService(redis, bot)
 
 app = Client(
     'vasya_fun_bot',
@@ -40,16 +49,26 @@ fastapi_app.add_middleware(
 )
 
 # Подключаем статику для WebApp
-webapp_static_path = os.path.join(os.path.dirname(__file__), "src", "webapp", "static")
+webapp_static_path = os.path.join(os.path.dirname(__file__), "webapp", "static")
 if os.path.exists(webapp_static_path):
     fastapi_app.mount("/webapp", StaticFiles(directory=webapp_static_path, html=True), name="webapp")
+    logger.info("Статика WebApp примонтирована на /webapp из %s", webapp_static_path)
+else:
+    logger.warning("Путь к статике WebApp не найден: %s", webapp_static_path)
 
 
 async def start_bot():
     """Запуск Telegram бота"""
     from handlers import routers
+    from middleware import middlewares, auto_delete_message
 
     dp.include_routers(*routers)
+    dp.update.middleware(
+        auto_delete_message.AutoDeleteMiddleware(auto_delete_service)
+    )
+    for middleware in middlewares:
+        dp.update.middleware(middleware)
+
     await bot.set_my_commands(settings.MY_COMMANDS)
     bot.default.parse_mode = 'HTML'
 
@@ -61,12 +80,13 @@ async def start_fastapi():
     """Запуск FastAPI сервера"""
     # Импортируем и подключаем роуты
     try:
-        from src.api.routes import games, calendar, user
-        fastapi_app.include_router(user.router, prefix="/api/user", tags=["user"])
-        fastapi_app.include_router(games.router, prefix="/api/games", tags=["games"])
-        fastapi_app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])
+        from src.api.routes import user, casino, minigames
+        fastapi_app.include_router(user.router)
+        fastapi_app.include_router(casino.router)
+        fastapi_app.include_router(minigames.router)
+        logger.info("API роутеры зарегистрированы: user, casino, minigames")
     except ImportError as e:
-        print(f"Warning: Could not import API routes: {e}")
+        logger.exception("Не удалось импортировать API-роуты: %s", e)
 
     config = uvicorn.Config(
         app=fastapi_app,
@@ -75,6 +95,7 @@ async def start_fastapi():
         log_level="info"
     )
     server = uvicorn.Server(config)
+    logger.info("Запуск FastAPI сервера на %s:%s", "127.0.0.1", 8000)
     await server.serve()
 
 
@@ -83,15 +104,16 @@ async def on_startup():
     # Создаем задачи для бота и API
     bot_task = asyncio.create_task(start_bot())
     api_task = asyncio.create_task(start_fastapi())
+    auto_delete_messages_task = asyncio.create_task(auto_delete_service.run_cleaner())
 
-    # Ждем завершения обеих задач
-    await asyncio.gather(bot_task, api_task)
+    # Ждем завершения всех задач
+    await asyncio.gather(bot_task, api_task, auto_delete_messages_task)
 
 
 if __name__ == '__main__':
     try:
         asyncio.run(on_startup())
     except KeyboardInterrupt:
-        print('Stopping...')
+        logger.info('Остановка...')
     except Exception as e:
-        print(f'Error: {e}')
+        logger.exception('Необработанная ошибка: %s', e)
