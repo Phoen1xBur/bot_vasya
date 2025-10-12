@@ -6,3 +6,4 @@
 /src/utils/models/
 /bot_vasya.code-workspace
 /logs/*
+__pycache__
