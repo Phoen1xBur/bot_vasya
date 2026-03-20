@@ -63,7 +63,7 @@ class STT:
         #         "Ffmpeg: сохраните ffmpeg.exe в папку ffmpeg\n"
         #         "Скачайте ffmpeg.exe по ссылке https://ffmpeg.org/download.html"
         #                     )
-        self.ffmpeg_path = self.ffmpeg_path + '/ffmpeg'
+        # self.ffmpeg_path = self.ffmpeg_path + '/ffmpeg'
 
     def audio_to_text(self, audio_file_name=None) -> str:
         """
