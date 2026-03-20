@@ -7,7 +7,12 @@ from aiogram import Bot, Dispatcher
 from pyrogram import Client
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+
 import os
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent.parent))
 
 from config import settings, redis
 from utils.logger import setup_logging
