@@ -1,8 +1,11 @@
 /.venv/
 /.idea/
+/venv
 /.env
 /vasya_fun_bot.session
 /src/vasya_fun_bot.session
 /src/utils/models/
 /bot_vasya.code-workspace
 /logs/*
+__pycache__
+
