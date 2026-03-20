@@ -1,0 +1,11 @@
+[Unit]
+Description=Bot Vasya
+After=postgresql.service
+[Service]
+Environment=PYTHONUNBUFFERED=true
+Type=idle
+WorkingDirectory=/root/projects/bot_vasya
+ExecStart=/root/projects/bot_vasya/venv/bin/python /root/projects/bot_vasya/src/run.py
+Restart=always
+[Install]
+WantedBy=multi-user.target
