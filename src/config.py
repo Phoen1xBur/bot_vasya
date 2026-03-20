@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     API_HASH: str
     REDIS_HOST: str
     REDIS_PORT: int
-    REDIS_PASSWORD: str
+    REDIS_PASSWORD: str | None = None
     ENABLE_VOICE: bool  # Вкл./Выкл. расшифровки голосовых сообщений
     ENV: str = 'development'  # development | production
     LOG_DIR: str = 'logs'
@@ -76,12 +76,24 @@ class Settings(BaseSettings):
         # postgresql+psycopg://user:pass@host:port/dbname
         return f"postgresql+psycopg://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
+    @property
+    def REDIS_CREDENTIALS(self) -> dict:
+        redis_credentials = {
+            'host': self.REDIS_HOST,
+            'port': self.REDIS_PORT,
+            'decode_responses': True,
+        }
+        if self.REDIS_PASSWORD:
+            redis_credentials.update({'password': self.REDIS_PASSWORD})
+        return redis_credentials
+
     model_config = SettingsConfigDict(env_file='.env')
 
 
 settings = Settings()
-redis = redis_package.Redis(
-    host=settings.REDIS_HOST, port=settings.REDIS_PORT,
-    password=settings.REDIS_PASSWORD,
-    decode_responses=True,
-)
+# redis = redis_package.Redis(
+#     host=settings.REDIS_HOST, port=settings.REDIS_PORT,
+#     password=settings.REDIS_PASSWORD,
+#     decode_responses=True,
+# )
+redis = redis_package.Redis(**settings.REDIS_CREDENTIALS)
