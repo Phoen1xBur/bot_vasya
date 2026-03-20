@@ -38,8 +38,8 @@ class Settings(BaseSettings):
     DB_PASS: str
     API_ID: str
     API_HASH: str
-    REDIS_HOST: str
-    REDIS_PORT: int
+    REDIS_HOST: str = 'localhost'
+    REDIS_PORT: int = 6379
     REDIS_PASSWORD: str | None = None
     ENABLE_VOICE: bool  # Вкл./Выкл. расшифровки голосовых сообщений
     ENV: str = 'development'  # development | production
