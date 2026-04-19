@@ -1,4 +1,5 @@
 import random
+from datetime import datetime
 
 from aiogram.methods import SendAnimation, SendMessage
 
@@ -18,7 +19,7 @@ from config import settings
 from models import MessageOrm, TelegramChatOrm, GroupUserOrm
 from utils.filters import ChatTypeFilter, MessageTypeFilter, BotNameFilter
 from utils.enums import ChatType, ContentType, TransactionType
-from utils.utils import generate_text
+from utils.utils import generate_text, generate_text_from_ai
 from .command import CommandUndefined, CommandCat
 
 router = Router(name=__name__)
@@ -113,7 +114,15 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot, message_delete_
             answer, keyboard = await func.test(message, bot)
             command = SendMessage(chat_id=chat_id, text=answer, reply_markup=keyboard)
         case _:
-            command = CommandUndefined(chat_id=chat_id)
+            messages = [
+                {'role': 'system', 'content': 'Ты являешься ботом Васей. Состоишь в чате со множеством людей. Относительно характера и стиля беседы отвечай соответствующе. Если тебя (Васю) что-то спросили, можешь дать полноценный и корректный ответ, насколько ты можешь его дать.'},
+                {'role': 'system', 'content': f'Так же помимо того, что старайся отвечать коротко, отвечай по делу, иногда строго по делу. В зависимости от того как тебя спросили. Так же ориентируйся на текущую дату и время, в некоторых вопросах это важно. Текущая дата и время: {datetime.now()}'},
+                {'role': 'user', 'content': message.text},
+            ]
+            response = await generate_text_from_ai(messages)
+            answer = response.choices[0].message.content
+            command = SendMessage(chat_id=chat_id, text=answer)
+            # command = CommandUndefined(chat_id=chat_id)
     if command:
         await bot(command)
 
@@ -192,9 +201,14 @@ async def echo(message: Message):
         except Exception as e:
             print(f'Redis error: {e}')
     if random.randint(1, 100) <= int(chance):
-        messages = [msg.text for msg in await MessageOrm.get_messages(message.chat.id)]
-        text = generate_text(messages)
-        await message.answer(text)
+        msg_from_db = await MessageOrm.get_messages(message.chat.id)
+        # messages = [msg.text for msg in msg_from_db]
+        messages = [{'role': 'user', 'content': f'[{msg[1] or msg[2] or msg[3]}] ' + msg[0]} for msg in reversed(msg_from_db)]
+        # messages = [msg.text for msg in await MessageOrm.get_messages(message.chat.id)]
+        messages.insert(0, {'role': 'system', 'content': 'В квадратных скобках в начале сообщения всегда отображается имя/ник пользователя. В случае его отсутствия - можешь считать его твоим администратором. Сам ответ не давай с именем в квадратных скобках. Так же это самое первое сообщение в системе.'})
+        messages.append({'role': 'system', 'content': 'Ты являешься ботом Васей. Состоишь в чате со множеством людей. Относительно характера и стиля беседы отвечай соответствующе. Если тебя (Васю) что-то спросили, можешь дать полноценный и корректный ответ, насколько ты можешь его дать. Это самое последнее сообщение. Так что читай/отвечай в соответствующем порядке. Чем новее сообщение тем оно важнее.'})
+        response = await generate_text_from_ai(messages)
+        await message.answer(response.choices[0].message.content)
 
 
 @router.message(Command('profile_test'))

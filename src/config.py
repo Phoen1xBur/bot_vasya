@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from aiogram.types import BotCommand
 import redis as redis_package
+from mistralai.client import Mistral
 
 # https://core.telegram.org/bots/api#html-style
 help_text = """<b>Список команд:</b>
@@ -31,6 +32,7 @@ help_text = """<b>Список команд:</b>
 
 class Settings(BaseSettings):
     TOKEN: str
+    MISTRAL_API_KEY: str
     DB_HOST: str
     DB_PORT: int
     DB_NAME: str
@@ -65,6 +67,10 @@ class Settings(BaseSettings):
         return commands
 
     @property
+    def MISTRAL_MODEL(self):
+        return 'mistral-medium-latest'
+
+    @property
     def DATABASE_URL_asyncpg(self) -> str:
         # DSN
         # postgresql+ascyncpg://user:pass@host:port/dbname
@@ -97,3 +103,4 @@ settings = Settings()
 #     decode_responses=True,
 # )
 redis = redis_package.Redis(**settings.REDIS_CREDENTIALS)
+mistral = Mistral(api_key=settings.MISTRAL_API_KEY)

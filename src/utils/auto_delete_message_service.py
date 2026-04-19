@@ -11,7 +11,7 @@ class AutoDeleteService:
         self.redis = redis
         self.bot = bot
 
-    def schedule(self, chat_id: int, message_id: int, delay: int = 60):
+    def schedule(self, chat_id: int, message_id: int, delay: int = 600):
         delete_at = int(time.time()) + delay
         # zset: score = время удаления
         self.redis.zadd(

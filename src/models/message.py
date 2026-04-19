@@ -1,9 +1,9 @@
 from datetime import datetime
 
 from sqlalchemy import ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, selectinload, joinedload
 
-from . import GroupUserOrm
+from . import GroupUserOrm, UserOrm
 from .imports import *
 
 
@@ -28,12 +28,22 @@ class MessageOrm(Base):
     async def get_messages(tg_chat_id: int):
         async with async_session_factory() as session:
             query = (
-                select(MessageOrm)
-                .join(MessageOrm.group_user)
+                select(
+                    MessageOrm.text,
+                    UserOrm.username,
+                    UserOrm.first_name,
+                    UserOrm.last_name,
+                )
+                .select_from(MessageOrm)
+                .outerjoin(GroupUserOrm, MessageOrm.group_user_id == GroupUserOrm.id)
+                .outerjoin(UserOrm, GroupUserOrm.user_id == UserOrm.user_id)
                 .filter(
                     GroupUserOrm.telegram_chat_id.__eq__(tg_chat_id)
                 )
-                .limit(10_000)
+                .limit(1_000)
+                .order_by(MessageOrm.id.desc())
             )
             result = await session.execute(query)
-            return result.scalars().all()
+            return result.all()
+            # result = await session.execute(query)
+            # return result.scalars().all()
