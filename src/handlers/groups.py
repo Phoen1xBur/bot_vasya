@@ -91,7 +91,8 @@ async def answer_by_bot_name(
             enable = True if enable == 'включи' else False
             if group_user.chat_member_status in func.MEMBER_TYPE_ADMIN:
                 await TelegramChatOrm.change_ai_generate_text(chat_settings.chat_id, enable)
-                answer = ''
+                answer = 'Включил' if enable else 'Выключил'
+                answer += ' ии'
             else:
                 answer = 'Эта команда доступна только для администраторов'
             command = SendMessage(chat_id=chat_id, text=answer)
