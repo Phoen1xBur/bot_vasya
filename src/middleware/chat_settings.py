@@ -14,8 +14,9 @@ class ChatSettingsMiddleware(BaseMiddleware):
             data: dict[str, Any],
     ):
         try:
-            if event and event.chat and event.chat.id:
-                data["chat_settings"]: TelegramChatOrm = await TelegramChatOrm.get_telegram_chat(event.chat.id)
+            chat = data.get("event_chat")
+            if chat:
+                data["chat_settings"]: TelegramChatOrm = await TelegramChatOrm.get_telegram_chat(chat.id)
         except:
             pass
         finally:
