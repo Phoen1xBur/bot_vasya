@@ -41,12 +41,43 @@ router.message.filter(
     # F.forward_origin is None
 )
 
+messages_rules = [
+    {
+        'role': 'system',
+        'content':
+            'Ты являешься ботом Васей. Состоишь в чате со множеством людей. Они могут общаться между собой так и с тобой. '
+            'Постарайся отличать такие сообщения, и не отвечать на то, что тебя не касается. '
+            'Так же по возможности отвечай только на последние 1-2 сообщения. '
+            'Относительно характера и стиля беседы отвечай соответствующе. '
+            'Если тебя (Васю) что-то спросили, можешь дать полноценный и корректный ответ, насколько ты можешь его дать. '
+            'В квадратных скобках в начале сообщения всегда отображается имя/ник пользователя. '
+            'В случае его отсутствия - можешь считать его твоим администратором. Сам ответ не давай с именем в квадратных скобках. '
+            'Так же никогда не пиши и не обращайся к участнику используя квадратные скобки. '
+            'Эта информация только для тебя. Если тебе пишет условный [name], ты не скажешь ему '
+            '"Привет [name]", ты скажешь ему Привет name. Это важно.'
+    },
+    {
+        'role': 'system',
+        'content':
+            'Так же помимо того, что старайся отвечать коротко, отвечай по делу, иногда строго по делу. '
+            'В зависимости от того как тебя спросили. Так же ориентируйся на текущую дату, '
+            f'в некоторых вопросах это важно. Текущая дата: {datetime.now().date()}; '
+            'Так же учитывай что разные участники беседы могут находиться в разных городах. (но в основном все в России) '
+            'И в том числе из-за этого у каждого может быть разное время. Но старайся ориентироваться на Московское время.'
+    }
+]
+
 
 @router.message(
     BotNameFilter(bot_names=settings.BOT_NAMES),
     (F.text[0] != '/')
 )
-async def answer_by_bot_name(message: Message, bot: aiogram.Bot, message_delete_service: AutoDeleteService):
+async def answer_by_bot_name(
+        message: Message,
+        bot: aiogram.Bot,
+        message_delete_service: AutoDeleteService,
+        chat_settings: "TelegramChatOrm",
+):
     arr_msg = message.text.split()[1:]
     group_user: GroupUserOrm = await func.get_group_user(message)
     chat_id = message.chat.id
@@ -55,6 +86,14 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot, message_delete_
         case []:
             messages = [msg.text for msg in await MessageOrm.get_messages(message.chat.id)]
             answer = generate_text(messages)
+            command = SendMessage(chat_id=chat_id, text=answer)
+        case ('включи' | 'выключи') as enable, 'ии':
+            enable = True if enable == 'включи' else False
+            if group_user.chat_member_status in func.MEMBER_TYPE_ADMIN:
+                await TelegramChatOrm.change_ai_generate_text(chat_settings.chat_id, enable)
+                answer = ''
+            else:
+                answer = 'Эта команда доступна только для администраторов'
             command = SendMessage(chat_id=chat_id, text=answer)
         case 'шанс', *chance:
             if group_user.chat_member_status in func.MEMBER_TYPE_ADMIN:
@@ -65,7 +104,7 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot, message_delete_
                     answer, chance = await func.get_chance(message)
                 redis.set(f'tg_chat_chance:{message.chat.id}', chance, ex=120)
             else:
-                answer = 'Эта команда доступна только для администраторов группы'
+                answer = 'Эта команда доступна только для администраторов'
             command = SendMessage(chat_id=chat_id, text=answer)
         case 'ответь', *words:
             animation, answer = await func.yesno()
@@ -114,13 +153,17 @@ async def answer_by_bot_name(message: Message, bot: aiogram.Bot, message_delete_
             answer, keyboard = await func.test(message, bot)
             command = SendMessage(chat_id=chat_id, text=answer, reply_markup=keyboard)
         case _:
-            messages = [
-                {'role': 'system', 'content': 'Ты являешься ботом Васей. Состоишь в чате со множеством людей. Относительно характера и стиля беседы отвечай соответствующе. Если тебя (Васю) что-то спросили, можешь дать полноценный и корректный ответ, насколько ты можешь его дать.'},
-                {'role': 'system', 'content': f'Так же помимо того, что старайся отвечать коротко, отвечай по делу, иногда строго по делу. В зависимости от того как тебя спросили. Так же ориентируйся на текущую дату и время, в некоторых вопросах это важно. Текущая дата и время: {datetime.now()}'},
-                {'role': 'user', 'content': message.text},
-            ]
-            response = await generate_text_from_ai(messages)
-            answer = response.choices[0].message.content
+            msg_from_db = await MessageOrm.get_messages(message.chat.id)
+            if chat_settings.ai_generate_text:
+                messages = [{'role': 'user', 'content': f'[{msg[1] or msg[2] or msg[3]}] ' + msg[0]} for msg in
+                            reversed(msg_from_db)]
+                messages.append({'role': 'user', 'content': message.text})
+                response = await generate_text_from_ai(messages + messages_rules)
+                answer = response.choices[0].message.content
+            else:
+                messages = [msg[0] for msg in msg_from_db]
+                messages.append(message.text)
+                answer = generate_text(messages)
             command = SendMessage(chat_id=chat_id, text=answer)
             # command = CommandUndefined(chat_id=chat_id)
     if command:
@@ -173,7 +216,10 @@ async def work(message: Message, message_delete_service: AutoDeleteService):
 @router.message(
     F.text[0] != '/'
 )
-async def echo(message: Message):
+async def echo(
+        message: Message,
+        chat_settings: "TelegramChatOrm",
+):
     if message.text is None:
         return
 
@@ -185,8 +231,15 @@ async def echo(message: Message):
     await MessageOrm.insert_message(group_user.id, message.text.replace('@', ''))
 
     if message.reply_to_message and message.reply_to_message.from_user.username == 'vasya_fun_bot':
-        messages = [msg.text for msg in await MessageOrm.get_messages(message.chat.id)]
-        answer = generate_text(messages)
+        msg_from_db = await MessageOrm.get_messages(message.chat.id)
+        if chat_settings.ai_generate_text:
+            messages = [{'role': 'user', 'content': f'[{msg[1] or msg[2] or msg[3]}] ' + msg[0]} for msg in reversed(msg_from_db)]
+            messages.insert(-1, {'role': 'assistant', 'content': message.reply_to_message.text})
+            response = await generate_text_from_ai(messages + messages_rules)
+            answer = response.choices[0].message.content
+        else:
+            messages = [msg[0] for msg in msg_from_db]
+            answer = generate_text(messages)
         await message.answer(answer)
         return
 
@@ -202,13 +255,14 @@ async def echo(message: Message):
             print(f'Redis error: {e}')
     if random.randint(1, 100) <= int(chance):
         msg_from_db = await MessageOrm.get_messages(message.chat.id)
-        # messages = [msg.text for msg in msg_from_db]
-        messages = [{'role': 'user', 'content': f'[{msg[1] or msg[2] or msg[3]}] ' + msg[0]} for msg in reversed(msg_from_db)]
-        # messages = [msg.text for msg in await MessageOrm.get_messages(message.chat.id)]
-        messages.insert(0, {'role': 'system', 'content': 'В квадратных скобках в начале сообщения всегда отображается имя/ник пользователя. В случае его отсутствия - можешь считать его твоим администратором. Сам ответ не давай с именем в квадратных скобках. Так же это самое первое сообщение в системе.'})
-        messages.append({'role': 'system', 'content': 'Ты являешься ботом Васей. Состоишь в чате со множеством людей. Относительно характера и стиля беседы отвечай соответствующе. Если тебя (Васю) что-то спросили, можешь дать полноценный и корректный ответ, насколько ты можешь его дать. Это самое последнее сообщение. Так что читай/отвечай в соответствующем порядке. Чем новее сообщение тем оно важнее.'})
-        response = await generate_text_from_ai(messages)
-        await message.answer(response.choices[0].message.content)
+        if chat_settings.ai_generate_text:
+            messages = [{'role': 'user', 'content': f'[{msg[1] or msg[2] or msg[3]}] ' + msg[0]} for msg in reversed(msg_from_db)]
+            response = await generate_text_from_ai(messages + messages_rules)
+            answer = response.choices[0].message.content
+        else:
+            messages = [msg[0] for msg in msg_from_db]
+            answer = generate_text(messages)
+        await message.answer(answer)
 
 
 @router.message(Command('profile_test'))

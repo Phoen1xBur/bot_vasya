@@ -9,6 +9,7 @@ class TelegramChatOrm(Base):
     # id: Mapped[int] = mapped_column(primary_key=True)
     chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     answer_chance: Mapped[int] = mapped_column(default=5)
+    ai_generate_text: Mapped[bool] = mapped_column(default=False)
     # время создания группы
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
 
@@ -63,12 +64,10 @@ class TelegramChatOrm(Base):
             if chat_group_settings is None:
                 chat_group_settings = TelegramChatOrm(chat_id=chat_id, answer_chance=answer_chance)
                 session.add(chat_group_settings)
-                await session.flush()
-                await session.commit()
             else:
                 chat_group_settings.answer_chance = answer_chance
-                await session.flush()
-                await session.commit()
+            await session.flush()
+            await session.commit()
 
     @staticmethod
     async def get_chance(chat_id: int):
@@ -81,3 +80,23 @@ class TelegramChatOrm(Base):
             )
             result = await session.execute(query)
             return result.scalars().first()
+
+    @staticmethod
+    async def change_ai_generate_text(chat_id: int, ai_generate_text: bool):
+        async with async_session_factory() as session:
+            query = (
+                select(TelegramChatOrm)
+                .filter(
+                    TelegramChatOrm.chat_id.__eq__(chat_id)
+                )
+            )
+            result = await session.execute(query)
+            chat_group_settings = result.scalars().first()
+            if chat_group_settings is None:
+                chat_group_settings = TelegramChatOrm(chat_id=chat_id, ai_generate_text=ai_generate_text)
+                session.add(chat_group_settings)
+            else:
+                chat_group_settings.ai_generate_text = ai_generate_text
+            await session.flush()
+            await session.commit()
+

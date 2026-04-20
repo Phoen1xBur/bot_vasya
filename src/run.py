@@ -1,6 +1,8 @@
 # run.py
 import asyncio
 import logging
+from time import sleep
+
 import uvicorn
 
 from aiogram import Bot, Dispatcher
@@ -120,5 +122,7 @@ if __name__ == '__main__':
         asyncio.run(on_startup())
     except KeyboardInterrupt:
         logger.info('Остановка...')
+        sleep(2)
+        exit(0)
     except Exception as e:
         logger.exception('Необработанная ошибка: %s', e)
