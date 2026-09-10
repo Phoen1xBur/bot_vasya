@@ -1,9 +1,8 @@
-from . import common, groups, groups_voice, private, chat_member
+from . import common, groups, private, chat_member
+from src.handlers.groups import group_routers
 from .callback import routers as callback_routers
 
-routers = callback_routers + [
-    groups.router,
-    groups_voice.router,
+routers = callback_routers + group_routers + [
     private.router,
     chat_member.router,
     common.router,

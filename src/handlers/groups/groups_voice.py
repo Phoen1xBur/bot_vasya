@@ -6,7 +6,7 @@ from aiogram import Router
 from aiogram.types import Message
 
 from utils.stt import STT
-from . import func
+from handlers import func
 from utils.filters import ChatTypeFilter, MessageTypeFilter
 from utils.enums import ChatType, ContentType
 

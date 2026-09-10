@@ -2,25 +2,22 @@ import random
 from datetime import datetime
 
 from aiogram.methods import SendAnimation, SendMessage
-
-from config import redis
-
-import aiogram
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import Message
 from aiogram.filters import Command
 
+from config import redis
 from keyboards.inline_kb_generate_start import build_inline_kb_start
 from keyboards.inline_kb_profile_change_settings import profile_change_settings
 from keyboards.inline_kb_minigames import build_inline_kb_minigames_select
 from utils.auto_delete_message_service import AutoDeleteService
-from . import func
+from handlers import func
 from config import settings
 from models import MessageOrm, TelegramChatOrm, GroupUserOrm
 from utils.filters import ChatTypeFilter, MessageTypeFilter, BotNameFilter
-from utils.enums import ChatType, ContentType, TransactionType
+from utils.enums import ChatType, ContentType
 from utils.utils import generate_text, generate_text_from_ai
-from .command import CommandUndefined, CommandCat
+from handlers.command import CommandCat
 
 router = Router(name=__name__)
 router.message.filter(
@@ -74,7 +71,7 @@ messages_rules = [
 )
 async def answer_by_bot_name(
         message: Message,
-        bot: aiogram.Bot,
+        bot: Bot,
         message_delete_service: AutoDeleteService,
         chat_settings: "TelegramChatOrm",
 ):
