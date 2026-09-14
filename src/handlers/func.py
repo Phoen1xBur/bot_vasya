@@ -102,7 +102,8 @@ async def set_chance(message: Message, chance: int) -> str:
 
 
 async def get_chance(message: Message) -> (str, int):
-    chance = (await TelegramChatOrm.get_chance(message.chat.id)).answer_chance
+    chance_row = await TelegramChatOrm.get_chance(message.chat.id)
+    chance = chance_row.answer_chance if chance_row else 5
     answer = (f'Шанс сообщения в группе {chance}%\n'
               f'Для изменения шанса напишите "Вася шанс [число шанса от 0 до 100]"')
 

@@ -13,7 +13,7 @@ class WorkCommand(BotCommand):
         message: Message,
         bot: Bot,
         message_delete_service: AutoDeleteService,
-        chat_settings: TelegramChatOrm,
+        chat_settings: TelegramChatOrm | None = None,
         *args,
         **kwargs
     ) -> CommandResult:
@@ -22,6 +22,7 @@ class WorkCommand(BotCommand):
 
         message_delete_service.schedule(message.chat.id, message.message_id)
         message_delete_service.schedule(message_answer.chat.id, message_answer.message_id)
+        return CommandResult(text=answer)
 
     @property
     def names(self) -> tuple[str, ...]:

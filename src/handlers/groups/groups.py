@@ -73,8 +73,16 @@ async def answer_by_bot_name(
         message: Message,
         bot: Bot,
         message_delete_service: AutoDeleteService,
-        chat_settings: "TelegramChatOrm",
+        chat_settings: "TelegramChatOrm | None",
 ):
+    if chat_settings is None:
+        chat_settings = await TelegramChatOrm.get_telegram_chat(message.chat.id)
+        if chat_settings is None:
+            await TelegramChatOrm.insert_or_update_telegram_chat(chat_id=message.chat.id)
+            chat_settings = await TelegramChatOrm.get_telegram_chat(message.chat.id)
+        if chat_settings is None:
+            return
+
     arr_msg = message.text.split()[1:]
     group_user: GroupUserOrm = await func.get_group_user(message)
     chat_id = message.chat.id
@@ -216,13 +224,21 @@ async def work(message: Message, message_delete_service: AutoDeleteService):
 )
 async def echo(
         message: Message,
-        chat_settings: "TelegramChatOrm",
+        chat_settings: "TelegramChatOrm | None",
 ):
     if message.text is None:
         return
 
     if message.via_bot or message.forward_origin:
         return
+
+    if chat_settings is None:
+        chat_settings = await TelegramChatOrm.get_telegram_chat(message.chat.id)
+        if chat_settings is None:
+            await TelegramChatOrm.insert_or_update_telegram_chat(chat_id=message.chat.id)
+            chat_settings = await TelegramChatOrm.get_telegram_chat(message.chat.id)
+        if chat_settings is None:
+            return
 
     group_user: GroupUserOrm = await func.get_group_user(message)
 
@@ -243,10 +259,11 @@ async def echo(
 
     try:
         chance = redis.get(f'tg_chat_chance:{message.chat.id}')
-    except:
+    except Exception:
         chance = None
     if chance is None:
-        chance = (await TelegramChatOrm.get_chance(message.chat.id)).answer_chance
+        chance_row = await TelegramChatOrm.get_chance(message.chat.id)
+        chance = chance_row.answer_chance if chance_row else chat_settings.answer_chance
         try:
             redis.set(f'tg_chat_chance:{message.chat.id}', chance, ex=120)
         except Exception as e:

@@ -1,71 +1,42 @@
-# run.py
+"""Telegram bot entrypoint (no FastAPI — see api_app.py)."""
+
 import asyncio
 import logging
+import sys
+from pathlib import Path
 from time import sleep
-
-import uvicorn
 
 from aiogram import Bot, Dispatcher
 from pyrogram import Client
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-
-import os
-import sys
-from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
 from config import settings, redis
 from utils.logger import setup_logging
 from utils.auto_delete_message_service import AutoDeleteService
+from messaging.rabbitmq import ensure_bus
 
 """Fix utils"""
 from utils.fix.fix_pyrogram import *  # noqa
-
 """End fix"""
 
-# Логирование
 setup_logging(settings.ENV, settings.LOG_DIR, settings.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
-# Инициализация бота и клиента
 bot = Bot(token=settings.TOKEN)
 dp = Dispatcher()
 
 auto_delete_service = AutoDeleteService(redis, bot)
 
 app = Client(
-    'vasya_fun_bot',
+    "vasya_fun_bot",
     settings.API_ID,
-    settings.API_HASH
+    settings.API_HASH,
 )
 
-# Инициализация FastAPI
-fastapi_app = FastAPI(title="Telegram Bot WebApp API")
 
-# Добавляем CORS middleware
-from fastapi.middleware.cors import CORSMiddleware
-
-fastapi_app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Подключаем статику для WebApp
-webapp_static_path = os.path.join(os.path.dirname(__file__), "webapp", "static")
-if os.path.exists(webapp_static_path):
-    fastapi_app.mount("/webapp", StaticFiles(directory=webapp_static_path, html=True), name="webapp")
-    logger.info("Статика WebApp примонтирована на /webapp из %s", webapp_static_path)
-else:
-    logger.warning("Путь к статике WebApp не найден: %s", webapp_static_path)
-
-
-async def start_bot():
-    """Запуск Telegram бота"""
+async def start_bot() -> None:
     from handlers import routers
     from middleware import middlewares, auto_delete_message
 
@@ -77,52 +48,49 @@ async def start_bot():
         dp.update.middleware(middleware)
 
     await bot.set_my_commands(settings.MY_COMMANDS)
-    bot.default.parse_mode = 'HTML'
-
-    # Запуск polling
+    bot.default.parse_mode = "HTML"
     await dp.start_polling(bot)
 
 
-async def start_fastapi():
-    """Запуск FastAPI сервера"""
-    # Импортируем и подключаем роуты
-    try:
-        from src.api.routes import user, casino, minigames
-        fastapi_app.include_router(user.router)
-        fastapi_app.include_router(casino.router)
-        fastapi_app.include_router(minigames.router)
-        logger.info("API роутеры зарегистрированы: user, casino, minigames")
-    except ImportError as e:
-        logger.exception("Не удалось импортировать API-роуты: %s", e)
+async def start_bus_consumer() -> None:
+    """Listen for API → bot events (e.g. webapp actions). Optional."""
+    bus = await ensure_bus()
+    if not bus.connected:
+        logger.info("RabbitMQ offline — bot runs without message bus")
+        return
 
-    config = uvicorn.Config(
-        app=fastapi_app,
-        host="127.0.0.1",
-        port=8000,
-        log_level="info"
+    async def on_event(routing_key: str, payload: dict) -> None:
+        logger.debug("Bot bus event key=%s payload=%s", routing_key, payload)
+
+    await bus.consume(
+        queue_name="vasya.bot",
+        binding_keys=["api.#"],
+        handler=on_event,
     )
-    server = uvicorn.Server(config)
-    logger.info("Запуск FastAPI сервера на %s:%s", "127.0.0.1", 8000)
-    await server.serve()
 
 
-async def on_startup():
-    """Запуск всех сервисов"""
-    # Создаем задачи для бота и API
+async def on_startup() -> None:
+    bus_task = asyncio.create_task(start_bus_consumer())
     bot_task = asyncio.create_task(start_bot())
-    api_task = asyncio.create_task(start_fastapi())
-    auto_delete_messages_task = asyncio.create_task(auto_delete_service.run_cleaner())
+    cleaner_task = asyncio.create_task(auto_delete_service.run_cleaner())
+    try:
+        await asyncio.gather(bot_task, cleaner_task)
+    finally:
+        bus_task.cancel()
+        try:
+            await bus_task
+        except asyncio.CancelledError:
+            pass
+        bus = await ensure_bus()
+        await bus.close()
 
-    # Ждем завершения всех задач
-    await asyncio.gather(bot_task, api_task, auto_delete_messages_task)
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         asyncio.run(on_startup())
     except KeyboardInterrupt:
-        logger.info('Остановка...')
+        logger.info("Остановка...")
         sleep(2)
-        exit(0)
-    except Exception as e:
-        logger.exception('Необработанная ошибка: %s', e)
+        raise SystemExit(0)
+    except Exception:
+        logger.exception("Необработанная ошибка")

@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     ENV: str = 'development'  # development | production
     LOG_DIR: str = 'logs'
     LOG_LEVEL: str | None = None
+    # API / WebApp (отдельный процесс)
+    API_HOST: str = '127.0.0.1'
+    API_PORT: int = 8000
+    # Шина сообщений между ботом и API
+    RABBITMQ_URL: str = 'amqp://guest:guest@127.0.0.1/'
+    RABBITMQ_EXCHANGE: str = 'vasya.bus'
 
     @property
     def BOT_NAMES(self) -> tuple:

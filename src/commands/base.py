@@ -23,7 +23,7 @@ class BotCommand(ABC):
             message: Message,
             bot: Bot,
             message_delete_service: AutoDeleteService,
-            chat_settings: TelegramChatOrm,
+            chat_settings: TelegramChatOrm | None = None,
             *args,
             **kwargs
     ) -> CommandResult:
