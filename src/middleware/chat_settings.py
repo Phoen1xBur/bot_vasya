@@ -2,9 +2,9 @@ import logging
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 from aiogram import BaseMiddleware
-from aiogram.types import CallbackQuery, Chat, Message, TelegramObject, Update
+from aiogram.types import CallbackQuery, Chat, Message, TelegramObject
 
-from models.chat import TelegramChatOrm
+from shared.models.chat import TelegramChatOrm
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +16,9 @@ def _extract_chat(event: TelegramObject) -> Optional[Chat]:
         if event.message and isinstance(event.message, Message):
             return event.message.chat
         return None
-    if isinstance(event, Update):
+    if isinstance(event, TelegramObject):
         for attr in (
-            "message",
-            "edited_message",
-            "channel_post",
-            "edited_channel_post",
-            "callback_query",
+            "message", "edited_message", "channel_post", "edited_channel_post", "callback_query",
         ):
             nested = getattr(event, attr, None)
             if nested is None:
@@ -40,13 +36,10 @@ class ChatSettingsMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any],
     ) -> Any:
-        # Always inject so aiogram DI does not raise TypeError on handlers
         data["chat_settings"] = None
-
         chat = _extract_chat(event)
         if chat is None:
             return await handler(event, data)
-
         try:
             chat_settings = await TelegramChatOrm.get_telegram_chat(chat.id)
             if chat_settings is None:
@@ -54,8 +47,5 @@ class ChatSettingsMiddleware(BaseMiddleware):
                 chat_settings = await TelegramChatOrm.get_telegram_chat(chat.id)
             data["chat_settings"] = chat_settings
         except Exception:
-            logger.exception(
-                "Failed to load chat_settings for chat_id=%s", getattr(chat, "id", None)
-            )
-
+            logger.exception("Не удалось загрузить chat_settings для chat_id=%s", getattr(chat, "id", None))
         return await handler(event, data)

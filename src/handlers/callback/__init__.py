@@ -1,9 +1,9 @@
-from . import rob_police, profile, minigames, minigames_ttt
-
+from . import minigames, minigames_ttt, profile, rob_police, subscribe_donate
 
 routers = [
-    rob_police.router,
-    profile.router,
     minigames.router,
     minigames_ttt.router,
+    profile.router,
+    rob_police.router,
+    subscribe_donate.router,
 ]

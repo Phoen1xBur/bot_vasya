@@ -1,69 +1,36 @@
-import os
-from pathlib import Path
-
-import aiogram
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.types import Message
 
-from utils.stt import STT
-from handlers import func
-from utils.filters import ChatTypeFilter, MessageTypeFilter
-from utils.enums import ChatType, ContentType
-
-from config import settings
+from shared.config import get_settings
+from utils.filters import ChatTypeFilter
+from shared.enums import ChatType
+from utils.stt import transcribe
 
 router = Router(name=__name__)
-router.message.filter(
-    # События только из:
-    # Тип чата: группа/супергруппа
-    ChatTypeFilter(
-        ChatType.GROUP,
-        ChatType.SUPERGROUP,
-    ),
-    # Тип сообщения: Голосовое
-    MessageTypeFilter(
-        ContentType.VOICE,
-    ),
-    # Пока не работает: TypeError: unsupported callable
-    # Сообщение сгенерированное НЕ ботом
-    # not F.via_bot,
-    # Тип пересылки сообщения: Отсутствует
-    # F.forward_origin is None
-)
+router.message.filter(ChatTypeFilter(ChatType.GROUP, ChatType.SUPERGROUP))
 
-stt = None
-if settings.ENABLE_VOICE:
-    stt = STT()
+_settings = get_settings()
 
 
-@router.message()
-async def groups_voice(message: Message, bot: aiogram.Bot):
-    """
-    Обработка голосовых сообщений в группах, возвращение расшифровки голоса
-    """
-    if not stt:
+@router.message(F.voice | F.audio)
+async def handle_voice(message: Message):
+    """Распознавание голосовых через Vosk (если включён)."""
+    if not _settings.VOSK_ENABLED:
         return
-    # Получаем голосовое сообщение
-    voice = message.voice
-    if not voice:
-        return
-    # Проверяем длительность, если больше 3мин., то не обрабатываем
-    if voice.duration > 60 * 3:
-        return
-
-    # Получаем файл голосового сообщения
-    file = await bot.get_file(message.voice.file_id)
-    file_path = file.file_path
-    file_on_disk = Path('', f'{message.voice.file_id}.tmp')
-    await bot.download_file(file_path, destination=file_on_disk)
-
-    # Расшифровываем голос в текст
     try:
-        text = stt.audio_to_text(file_on_disk)
-        print(f'{text=}')
-    finally:
-        os.remove(file_on_disk)
+        file_id = message.voice.file_id if message.voice else message.audio.file_id
+        file = await message.bot.get_file(file_id)
+        import os
+        import tempfile
 
-    if not text:
-        return
-    await message.reply('Расшифровка текста:\n' + aiogram.html.quote(text))
+        # Скачиваем
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
+            await message.bot.download_file(file.file_path, tmp.name)
+            text = await transcribe(tmp.name)
+            os.unlink(tmp.name)
+        if text:
+            await message.reply(f"🎙 Распознано: {text}")
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("Ошибка распознавания голоса")

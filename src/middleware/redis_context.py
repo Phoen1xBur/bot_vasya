@@ -1,9 +1,9 @@
 from aiogram import BaseMiddleware
 
-from config import redis
+from shared.redis_client import get_redis
 
 
 class AddRedisContext(BaseMiddleware):
     async def __call__(self, handler, event, data):
-        data["redis"] = redis
+        data["redis"] = get_redis()
         return await handler(event, data)

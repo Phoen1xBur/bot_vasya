@@ -1,3 +1,7 @@
-https://www.ffmpeg.org/
+Скачайте модель Vosk для русского языка и распакуйте сюда.
+Модель: https://alphacephei.com/vosk/models
+Рекомендуется: vosk-model-ru-0.42 (или vosk-model-small-ru-0.22 для слабых серверов).
 
-https://alphacephei.com/vosk/models
+VOSK_ENABLED=true в .env для включения.
+Бинарники моделей НЕ коммитить (добавлены в .gitignore).
+

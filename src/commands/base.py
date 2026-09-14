@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from aiogram import Bot
 from aiogram.types import Message, ReplyMarkupUnion
 
-from models import TelegramChatOrm
+from shared.models.chat import TelegramChatOrm
 from utils.auto_delete_message_service import AutoDeleteService
 
 
@@ -19,20 +19,19 @@ class CommandResult:
 class BotCommand(ABC):
     @abstractmethod
     async def execute(
-            self,
-            message: Message,
-            bot: Bot,
-            message_delete_service: AutoDeleteService,
-            chat_settings: TelegramChatOrm | None = None,
-            *args,
-            **kwargs
+        self,
+        message: Message,
+        bot: Bot,
+        message_delete_service: AutoDeleteService,
+        chat_settings: TelegramChatOrm | None = None,
+        *args,
+        **kwargs,
     ) -> CommandResult:
         raise NotImplementedError()
 
     @property
     @abstractmethod
     def names(self) -> tuple[str, ...]:
-        """Возвращает список имен (алиасов) названия команды"""
         raise NotImplementedError()
 
     @property

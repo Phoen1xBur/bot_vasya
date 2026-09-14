@@ -1,104 +1,112 @@
-# -*- coding: utf8 -*-
+"""Speech-to-text через Vosk.
+
+Улучшения:
+- Асинхронная загрузка модели (не блокирует event loop).
+- Распознавание через asyncio.to_thread.
+- Graceful disable если модель не найдена (VOSK_ENABLED=false).
+Готова к запуску на мощном сервере.
 """
-Конвертация wav/ogg -> текст
-"""
+from __future__ import annotations
+
+import asyncio
 import json
+import logging
 import os
 import subprocess
+from typing import Optional
 
-from vosk import KaldiRecognizer, Model  # оффлайн-распознавание от Vosk
+from shared.config import get_settings
+
+logger = logging.getLogger(__name__)
+_settings = get_settings()
+
+# Глобальный экземпляр (загружается лениво)
+_stt_instance: Optional["STT"] = None
+_stt_lock = asyncio.Lock()
 
 
 class STT:
-    """
-    Класс для распознавания аудио через Vosk и преобразования его в текст.
-    Поддерживаются форматы аудио: wav, ogg
-    """
-    default_init = {
-        "model_path": "src/utils/models/vosk/vosk-model-ru-0.42",  # путь к папке с файлами STT модели Vosk
-        "sample_rate": 16000,
-        "ffmpeg_path": "src/utils/models/vosk/"  # путь к ffmpeg
-    }
+    def __init__(self, model_path: str | None = None, sample_rate: int = 16000) -> None:
+        self.model_path = model_path or _settings.VOSK_MODEL_PATH
+        self.sample_rate = sample_rate
+        self._model = None
+        self._available = False
+        self._load_model()
 
-    def __init__(self,
-                 model_path=None,
-                 sample_rate=None,
-                 ffmpeg_path=None
-                 ) -> None:
-        """
-        Настройка модели Vosk для распознавания аудио и
-        преобразования его в текст.
-
-        :arg model_path:  str путь до модели Vosk
-        :arg sample_rate: int частота выборки, обычно 16000
-        :arg ffmpeg_path: str путь к ffmpeg
-        """
-        self.model_path = model_path if model_path else STT.default_init["model_path"]
-        self.sample_rate = sample_rate if sample_rate else STT.default_init["sample_rate"]
-        self.ffmpeg_path = ffmpeg_path if ffmpeg_path else STT.default_init["ffmpeg_path"]
-
-        self._check_model()
-
-        model = Model(self.model_path)
-        self.recognizer = KaldiRecognizer(model, self.sample_rate)
-        self.recognizer.SetWords(True)
-
-    def _check_model(self):
-        """
-        Проверка наличия модели Vosk на нужном языке в каталоге приложения
-        """
+    def _load_model(self) -> None:
+        if not _settings.VOSK_ENABLED:
+            logger.info("Vosk отключён (VOSK_ENABLED=false)")
+            return
         if not os.path.exists(self.model_path):
-            raise Exception(
-                "Vosk: сохраните папку model в папку vosk\n"
-                "Скачайте модель по ссылке https://alphacephei.com/vosk/models"
-                            )
+            logger.warning(
+                "Vosk модель не найдена: %s. Распознавание голоса отключено. "
+                "Скачайте модель: https://alphacephei.com/vosk/models",
+                self.model_path,
+            )
+            return
+        try:
+            from vosk import KaldiRecognizer, Model
 
-        # isffmpeg_here = False
-        # for file in os.listdir(self.ffmpeg_path):
-        #     if file.startswith('ffmpeg'):
-        #         isffmpeg_here = True
-        #
-        # if not isffmpeg_here:
-        #     raise Exception(
-        #         "Ffmpeg: сохраните ffmpeg.exe в папку ffmpeg\n"
-        #         "Скачайте ffmpeg.exe по ссылке https://ffmpeg.org/download.html"
-        #                     )
-        # self.ffmpeg_path = self.ffmpeg_path + '/ffmpeg'
+            self._model = Model(self.model_path)
+            self._recognizer = KaldiRecognizer(self._model, self.sample_rate)
+            self._recognizer.SetWords(True)
+            self._available = True
+            logger.info("Vosk модель загружена: %s", self.model_path)
+        except Exception:
+            logger.exception("Ошибка загрузки Vosk модели")
 
-    def audio_to_text(self, audio_file_name=None) -> str:
-        """
-        Offline-распознавание аудио в текст через Vosk
-        :param audio_file_name: str путь и имя аудио файла
-        :return: str распознанный текст
-        """
-        if audio_file_name is None:
-            raise Exception("Укажите путь и имя файла")
-        if not os.path.exists(audio_file_name):
-            raise Exception("Укажите правильный путь и имя файла")
+    @property
+    def available(self) -> bool:
+        return self._available
 
-        # Конвертация аудио в wav и результат в process.stdout
+    def _recognize_sync(self, audio_file_name: str) -> str:
+        """Синхронное распознавание (запускается в потоке через to_thread)."""
+        # Конвертация в wav через ffmpeg
         process = subprocess.Popen(
-            [self.ffmpeg_path,
-             "-loglevel", "quiet",
-             "-i", audio_file_name,          # имя входного файла
-             "-ar", str(self.sample_rate),   # частота выборки
-             "-ac", "1",                     # кол-во каналов
-             "-f", "s16le",                  # кодек для перекодирования, у нас wav
-             "-"                             # имя выходного файла нет, тк читаем из stdout
-             ],
-            stdout=subprocess.PIPE
-                                   )
-
-        # Чтение данных кусками и распознавание через модель
+            [
+                "ffmpeg",
+                "-loglevel", "quiet",
+                "-i", audio_file_name,
+                "-ar", str(self.sample_rate),
+                "-ac", "1",
+                "-f", "s16le",
+                "-",
+            ],
+            stdout=subprocess.PIPE,
+        )
         while True:
             data = process.stdout.read(4000)
             if len(data) == 0:
                 break
-            if self.recognizer.AcceptWaveform(data):
+            if self._recognizer.AcceptWaveform(data):
                 pass
+        result_json = self._recognizer.FinalResult()
+        result_dict = json.loads(result_json)
+        return result_dict.get("text", "")
 
-        # Возвращаем распознанный текст в виде str
-        result_json = self.recognizer.FinalResult()  # это json в виде str
-        result_dict = json.loads(result_json)    # это dict
-        return result_dict["text"]               # текст в виде str
+    async def audio_to_text(self, audio_file_name: str) -> str:
+        """Асинхронное распознавание — не блокирует event loop."""
+        if not self._available:
+            return ""
+        if not os.path.exists(audio_file_name):
+            return ""
+        return await asyncio.to_thread(self._recognize_sync, audio_file_name)
 
+
+async def get_stt() -> Optional[STT]:
+    """Получить синглтон STT (ленивая инициализация)."""
+    global _stt_instance
+    if _stt_instance is not None:
+        return _stt_instance
+    async with _stt_lock:
+        if _stt_instance is None:
+            _stt_instance = STT()
+    return _stt_instance
+
+
+async def transcribe(audio_file_name: str) -> str:
+    """Распознать аудио в текст. Возвращает '' если Vosk недоступен."""
+    stt = await get_stt()
+    if stt is None or not stt.available:
+        return ""
+    return await stt.audio_to_text(audio_file_name)

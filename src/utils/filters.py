@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from typing import Union
 
 from aiogram.filters import BaseFilter
 from aiogram.types import Message
 
-from utils.enums import ChatType, ContentType
+from shared.enums import ChatType, ContentType
 
 
 class ChatTypeFilter(BaseFilter):
@@ -15,8 +17,7 @@ class ChatTypeFilter(BaseFilter):
             return True
         if isinstance(self.chat_type, ChatType):
             return message.chat.type == self.chat_type
-        else:
-            return message.chat.type in self.chat_type
+        return message.chat.type in self.chat_type
 
 
 class MessageTypeFilter(BaseFilter):
@@ -26,8 +27,7 @@ class MessageTypeFilter(BaseFilter):
     async def __call__(self, message: Message) -> bool:
         if isinstance(self.message_type, ContentType):
             return message.content_type == self.message_type
-        else:
-            return message.content_type in self.message_type
+        return message.content_type in self.message_type
 
 
 class BotNameFilter(BaseFilter):
@@ -37,7 +37,5 @@ class BotNameFilter(BaseFilter):
     async def __call__(self, message: Message) -> bool:
         try:
             return message.text.casefold().split()[0] in self.bot_names
-        except IndexError:
-            return False
-        except AttributeError:
+        except (IndexError, AttributeError):
             return False

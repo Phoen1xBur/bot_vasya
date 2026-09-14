@@ -1,13 +1,7 @@
-from enum import Enum
-
+"""Настройки пользователя (callback data factory — заглушка для обратной совместимости)."""
 from aiogram.filters.callback_data import CallbackData
 
 
-class Action(str, Enum):
-    notify = "Notify"
-
-
-class UserSettings(CallbackData, prefix="user"):
-    action: Action
-    tg_user_id: int
-    tg_chat_id: int
+class UserSettings(CallbackData, prefix="profile"):
+    action: str
+    chat_id: int

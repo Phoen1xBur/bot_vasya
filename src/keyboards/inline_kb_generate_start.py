@@ -1,28 +1,26 @@
 from urllib.parse import urlencode
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.utils.deep_linking import create_start_link
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
-from run import bot
+from shared.config import get_settings
+
+_settings = get_settings()
 
 
-async def build_inline_kb_start(chat_id: int, request_func: str, request_description: str) -> InlineKeyboardMarkup:
-    """
-    Возвращает inline-клавиатуру со ссылкой на старт бота с
-    :param chat_id: ID чата откуда инициализация запроса
-    :param request_func: наименование запроса (profile/casino e.t.c)
-    :param request_description: Название кнопки для отображения
-    :return: Markup клавиатура для сообщения (reply_markup)
-    """
-    # Формируем параметры для deep link
-    params = {
-        'chat_id': chat_id,
-        'request_func': request_func,
-    }
-    deep_link = await create_start_link(bot, urlencode(params), encode=True)
+def build_inline_kb_start(chat_id: int, request_func: str, label: str) -> InlineKeyboardMarkup:
+    """WebApp-кнопка в ЛС (profile/casino и т.д.)."""
+    url = f"{_settings.WEBAPP_BASE_URL}/webapp/index.html?{urlencode({'chat_id': chat_id, 'request_func': request_func})}"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=label, web_app=WebAppInfo(url=url))]]
+    )
 
-    rows = [
-        [InlineKeyboardButton(text=request_description, url=deep_link)],
-    ]
 
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+def build_inline_kb_webapp(page: str, params: dict | None = None) -> InlineKeyboardMarkup:
+    """Универсальная WebApp-кнопка для ЛС."""
+    p = {"page": page}
+    if params:
+        p.update(params)
+    url = f"{_settings.WEBAPP_BASE_URL}/webapp/index.html?{urlencode(p)}"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="Открыть", web_app=WebAppInfo(url=url))]]
+    )

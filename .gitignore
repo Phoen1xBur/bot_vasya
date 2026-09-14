@@ -1,11 +1,49 @@
-/.venv/
-/.idea/
-/venv
-/.env
-/vasya_fun_bot.session
-/src/vasya_fun_bot.session
-/src/utils/models/
-/bot_vasya.code-workspace
-/logs/*
-__pycache__
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
 
+# Виртуальные окружения
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Логи
+logs/
+*.log
+
+# .env (секреты — не коммитить)
+.env
+.env.local
+.env.production
+
+# Vosk models (большие файлы — не коммитить)
+src/utils/models/vosk/vosk-model-*
+*.bin
+!src/utils/models/vosk/install_models_here.txt
+
+# WebApp build (собирается из src)
+src_fastapi/webapp/build/
+src_fastapi/webapp/node_modules/
+src_fastapi/webapp/static/dist/
+
+# База данных / тесты
+*.db
+*.sqlite3
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage

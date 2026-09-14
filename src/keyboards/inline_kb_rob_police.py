@@ -1,11 +1,13 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
-def build_inline_kb_rob_police(user_id: int | str) -> InlineKeyboardMarkup:
-    print(f'rob_police:yes:{user_id}')
-    rows = [
-        [InlineKeyboardButton(text='Да', callback_data=f'rob_police:yes:{user_id}')],
-        [InlineKeyboardButton(text='Нет', callback_data=f'rob_police:no:{user_id}')],
-        # InlineKeyboardButton('Отмена', callback_data='cancel'),
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+def build_inline_kb_rob_police(user_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура взаимодействия с полицией при ограблении."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="💸 Дать взятку", callback_data=f"rob:bribe:{user_id}"),
+                InlineKeyboardButton(text="🚔 Сдаться", callback_data=f"rob:surrender:{user_id}"),
+            ]
+        ]
+    )

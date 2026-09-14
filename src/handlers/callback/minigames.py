@@ -1,79 +1,82 @@
 import logging
-from urllib.parse import urlencode
 
-from aiogram import Router, F
-from aiogram.types import CallbackQuery
+from aiogram import F, Router
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from aiogram.utils.deep_linking import create_start_link
 
-from config import redis
-from run import bot
-from keyboards.inline_kb_ttt_invite import build_inline_kb_ttt_invite
+from shared.config import get_settings
+from shared.redis_client import get_redis
+from run_bot import bot
 
-
+_settings = get_settings()
 router = Router(name=__name__)
+logger = logging.getLogger(__name__)
 
 
-def _key_ttt(chat_id: int) -> str:
-    return f'mg:ttt:room:{chat_id}'
-
-
-def _key_roulette(chat_id: int) -> str:
-    return f'mg:roulette:room:{chat_id}'
-
-
-@router.callback_query(F.data.startswith('mg:select:'))
+@router.callback_query(F.data.startswith("mg:select:"))
 async def on_select_minigame(callback: CallbackQuery):
-    logger = logging.getLogger(__name__)
+    """Выбор игры в чате → отправляем в ЛС кнопку с web_app (обход ограничения)."""
     try:
         chat = callback.message.chat if callback.message else None
         if not chat:
-            await callback.answer('Ошибка: отсутствует контекст чата', show_alert=True)
+            await callback.answer("Ошибка: нет контекста чата", show_alert=True)
             return
 
-        game = callback.data.split(':')[-1]
+        game = callback.data.split(":")[-1]
         creator_id = callback.from_user.id
 
-        if game == 'ttt':
-            # Создатель берётся из лобби, если есть
-            lobby = redis.hgetall(f'mg:lobby:{chat.id}')
-            room_creator = int(lobby.get('creator_id', creator_id) or creator_id)
-            redis.hset(_key_ttt(chat.id), mapping={
-                'creator_id': room_creator,
-                'player2_id': 0,
-                'bet_creator': 0,
-                'bet_player2': 0,
-                'state': 'waiting',  # waiting, betting, playing, finished
-            })
-            kb = await build_inline_kb_ttt_invite(chat.id, room_creator, joined=0)
-            await callback.message.edit_text('Крестики-нолики: приглашение в игру', reply_markup=kb)
-            await callback.answer()
-            return
+        # Сохраняем лобби
+        try:
+            get_redis().hset(f"mg:lobby:{chat.id}", mapping={"creator_id": creator_id})
+        except Exception:
+            pass
 
-        if game == 'roulette':
-            # Создаём комнату, если ещё нет
-            room_key = _key_roulette(chat.id)
-            if not redis.exists(room_key):
-                lobby = redis.hgetall(f'mg:lobby:{chat.id}')
-                room_creator = int(lobby.get('creator_id', creator_id) or creator_id)
-                redis.hset(room_key, mapping={
-                    'creator_id': room_creator,
-                    'state': 'open',  # open, spinning, finished
-                })
-            # Даём ссылку в ЛС
-            params = {
-                'chat_id': chat.id,
-                'request_func': 'minigame_roulette',
-            }
-            deep_link = await create_start_link(bot, urlencode(params), encode=True)
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Перейти в ЛС', url=deep_link)]])
-            await callback.message.edit_text('Рулетка: переходите в ЛС для входа в игру', reply_markup=kb)
-            await callback.answer()
-            return
+        # Глубокая ссылка в ЛС бота с параметром игры
+        game_param = {
+            "ttt": "minigame_ttt",
+            "roulette": "minigame_roulette",
+            "slots": "minigame_slots",
+        }.get(game, game)
 
-        await callback.answer('Неизвестная игра', show_alert=True)
-    except Exception as e:
-        logger.exception('Ошибка при выборе мини-игры: %s', e)
-        await callback.answer('Произошла ошибка', show_alert=True)
+        from urllib.parse import urlencode
+
+        params = urlencode({"chat_id": chat.id, "request_func": game_param})
+        deep_link = await create_start_link(bot, params, encode=True)
+
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🎮 Открыть игру в ЛС", url=deep_link)]]
+        )
+        await callback.message.edit_text(
+            "Игра начинается! Проверьте личные сообщения от бота.",
+            reply_markup=kb,
+        )
+        await callback.answer()
+    except Exception:
+        logger.exception("Ошибка выбора мини-игры")
+        await callback.answer("Произошла ошибка", show_alert=True)
 
 
+@router.callback_query(F.data.startswith("mg:invite:"))
+async def on_game_invite(callback: CallbackQuery):
+    """Приглашение участников в массовую игру (рулетка)."""
+    try:
+        parts = callback.data.split(":")  # mg, invite, game_type, chat_id
+        game_type = parts[2]
+        chat_id = int(parts[3])
+        creator_id = callback.from_user.id
+
+        from urllib.parse import urlencode
+
+        params = urlencode({"chat_id": chat_id, "request_func": f"minigame_{game_type}"})
+        deep_link = await create_start_link(bot, params, encode=True)
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🎮 Присоединиться", url=deep_link)]]
+        )
+        await callback.message.edit_text(
+            f"Игра «{game_type}» открыта! Присоединяйтесь:",
+            reply_markup=kb,
+        )
+        await callback.answer()
+    except Exception:
+        logger.exception("Ошибка приглашения")
+        await callback.answer("Произошла ошибка", show_alert=True)

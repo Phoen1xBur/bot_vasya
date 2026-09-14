@@ -1,79 +1,71 @@
 import random
 from datetime import datetime
 
-from aiogram.methods import SendAnimation, SendMessage
-from aiogram import Router, F, Bot
-from aiogram.types import Message
+from aiogram import Bot, F, Router, html
 from aiogram.filters import Command
+from aiogram.methods import SendAnimation, SendMessage
+from aiogram.types import Message
 
-from config import redis
-from keyboards.inline_kb_generate_start import build_inline_kb_start
-from keyboards.inline_kb_profile_change_settings import profile_change_settings
+from shared.config import get_settings
+from shared.enums import SubscriptionTier
+from shared.models import GroupUserOrm, MessageOrm, TelegramChatOrm
+from shared.redis_client import get_redis
 from keyboards.inline_kb_minigames import build_inline_kb_minigames_select
+from keyboards.inline_kb_profile_change_settings import profile_change_settings
+from keyboards.inline_kb_webapp_casino import (
+    build_inline_kb_webapp_admin,
+    build_inline_kb_webapp_advertise,
+    build_inline_kb_webapp_profile,
+)
+from keyboards.inline_kb_subscribe_donate import build_inline_kb_donate, build_inline_kb_subscribe
 from utils.auto_delete_message_service import AutoDeleteService
-from handlers import func
-from config import settings
-from models import MessageOrm, TelegramChatOrm, GroupUserOrm
-from utils.filters import ChatTypeFilter, MessageTypeFilter, BotNameFilter
-from utils.enums import ChatType, ContentType
+from utils.filters import BotNameFilter, ChatTypeFilter, MessageTypeFilter
 from utils.utils import generate_text, generate_text_from_ai
+from shared.enums import ChatType, ContentType
+from handlers import func
 from handlers.command import CommandCat
 
 router = Router(name=__name__)
 router.message.filter(
-    # События только из:
-    # Тип чата: группа/супергруппа
-    ChatTypeFilter(
-        ChatType.GROUP,
-        ChatType.SUPERGROUP,
-    ),
-    # Тип сообщения: ТЕКСТ
-    MessageTypeFilter(
-        ContentType.TEXT,
-    ),
-    # Пока не работает: TypeError: unsupported callable
-    # Сообщение сгенерированное НЕ ботом
-    # not F.via_bot,
-    # Тип пересылки сообщения: Отсутствует
-    # F.forward_origin is None
+    ChatTypeFilter(ChatType.GROUP, ChatType.SUPERGROUP),
+    MessageTypeFilter(ContentType.TEXT),
 )
+
+_settings = get_settings()
 
 messages_rules = [
     {
-        'role': 'system',
-        'content':
-            'Ты являешься ботом Васей. Состоишь в чате со множеством людей. Они могут общаться между собой так и с тобой. '
-            'Постарайся отличать такие сообщения, и не отвечать на то, что тебя не касается. '
-            'Так же по возможности отвечай только на последние 1-2 сообщения. '
-            'Относительно характера и стиля беседы отвечай соответствующе. '
-            'Если тебя (Васю) что-то спросили, можешь дать полноценный и корректный ответ, насколько ты можешь его дать. '
-            'В квадратных скобках в начале сообщения всегда отображается имя/ник пользователя. '
-            'В случае его отсутствия - можешь считать его твоим администратором. Сам ответ не давай с именем в квадратных скобках. '
-            'Так же никогда не пиши и не обращайся к участнику используя квадратные скобки. '
-            'Эта информация только для тебя. Если тебе пишет условный [name], ты не скажешь ему '
-            '"Привет [name]", ты скажешь ему Привет name. Это важно.'
+        "role": "system",
+        "content": (
+            "Ты являешься ботом Васей. Состоишь в чате со множеством людей. Они могут общаться между собой так и с тобой. "
+            "Постарайся отличать такие сообщения, и не отвечать на то, что тебя не касается. "
+            "По возможности отвечай только на последние 1-2 сообщения. "
+            "В квадратных скобках в начале сообщения отображается имя/ник пользователя. "
+            "Сам ответ не давай с именем в квадратных скобках."
+        ),
     },
     {
-        'role': 'system',
-        'content':
-            'Так же помимо того, что старайся отвечать коротко, отвечай по делу, иногда строго по делу. '
-            'В зависимости от того как тебя спросили. Так же ориентируйся на текущую дату, '
-            f'в некоторых вопросах это важно. Текущая дата: {datetime.now().date()}; '
-            'Так же учитывай что разные участники беседы могут находиться в разных городах. (но в основном все в России) '
-            'И в том числе из-за этого у каждого может быть разное время. Но старайся ориентироваться на Московское время.'
-    }
+        "role": "system",
+        "content": (
+            "Старайся отвечать коротко, по делу. Ориентируйся на текущую дату: "
+            f"{datetime.now().date()}. Учитывай Московское время."
+        ),
+    },
 ]
 
 
-@router.message(
-    BotNameFilter(bot_names=settings.BOT_NAMES),
-    (F.text[0] != '/')
-)
+def _tag_prefix(sub_tag: str) -> str:
+    return f"[{sub_tag}] " if sub_tag else ""
+
+
+@router.message(BotNameFilter(bot_names=_settings.BOT_NAMES), (F.text[0] != "/"))
 async def answer_by_bot_name(
-        message: Message,
-        bot: Bot,
-        message_delete_service: AutoDeleteService,
-        chat_settings: "TelegramChatOrm | None",
+    message: Message,
+    bot: Bot,
+    message_delete_service: AutoDeleteService,
+    chat_settings: TelegramChatOrm | None,
+    sub_tier: SubscriptionTier = SubscriptionTier.FREE,
+    sub_tag: str = "",
 ):
     if chat_settings is None:
         chat_settings = await TelegramChatOrm.get_telegram_chat(message.chat.id)
@@ -91,144 +83,185 @@ async def answer_by_bot_name(
         case []:
             messages = [msg.text for msg in await MessageOrm.get_messages(message.chat.id)]
             answer = generate_text(messages)
-            command = SendMessage(chat_id=chat_id, text=answer)
-        case ('включи' | 'выключи') as enable, 'ии':
-            enable = True if enable == 'включи' else False
+            command = SendMessage(chat_id=chat_id, text=_tag_prefix(sub_tag) + answer)
+        case ("включи" | "выключи") as enable, "ии":
+            enable = enable == "включи"
             if group_user.chat_member_status in func.MEMBER_TYPE_ADMIN:
                 await TelegramChatOrm.change_ai_generate_text(chat_settings.chat_id, enable)
-                answer = 'Включил' if enable else 'Выключил'
-                answer += ' ии'
+                answer = "Включил ии" if enable else "Выключил ии"
             else:
-                answer = 'Эта команда доступна только для администраторов'
+                answer = "Эта команда доступна только для администраторов"
             command = SendMessage(chat_id=chat_id, text=answer)
-        case 'шанс', *chance:
+        case "шанс", *chance:
             if group_user.chat_member_status in func.MEMBER_TYPE_ADMIN:
-                if len(chance) > 0:
-                    chance = chance[0]
-                    answer = await func.set_chance(message, chance)
+                if chance:
+                    answer = await func.set_chance(message, chance[0])
                 else:
-                    answer, chance = await func.get_chance(message)
-                redis.set(f'tg_chat_chance:{message.chat.id}', chance, ex=120)
+                    answer, chance_val = await func.get_chance(message)
+                try:
+                    get_redis().set(f"tg_chat_chance:{message.chat.id}", chance_val, ex=120)
+                except Exception:
+                    pass
             else:
-                answer = 'Эта команда доступна только для администраторов'
+                answer = "Эта команда доступна только для администраторов"
             command = SendMessage(chat_id=chat_id, text=answer)
-        case 'ответь', *words:
+        case "ответь", *words:
             animation, answer = await func.yesno()
-            gif = words and words[0] == 'гиф'
+            gif = bool(words) and words[0] == "гиф"
             if gif:
                 command = SendAnimation(chat_id=chat_id, animation=animation, caption=answer)
             else:
                 command = SendMessage(chat_id=chat_id, text=answer)
-        case 'выбери', *words:
+        case "выбери", *words:
             answer = func.choice_words(words)
             command = SendMessage(chat_id=chat_id, text=answer)
-        case ('работа' | 'работать', ):
-            return await work(message, message_delete_service)
-        case 'профиль', *_:
-            return await profile(message, message_delete_service)
-        case 'вероятность', *words:
-            text = ' '.join(words)
-            answer = f'Вероятность {text}: {random.randint(0, 100)}%'
+        case ("работа" | "работать",):
+            answer = await func.work(message, sub_tier)
             command = SendMessage(chat_id=chat_id, text=answer)
-        case 'кто' | 'кого', *words:
+        case "профиль", *_:
+            answer, _user = await func.profile(message)
+            notification = "❌ Выключить" if _user and _user.can_tag else "✅ Включить"
+            msg_answer = await message.answer(
+                answer,
+                reply_markup=await profile_change_settings(
+                    message.from_user.id, message.chat.id, notification
+                ),
+            )
+            message_delete_service.schedule(message.chat.id, message.message_id)
+            message_delete_service.schedule(msg_answer.chat.id, msg_answer.message_id)
+            return
+        case "вероятность", *words:
+            text = " ".join(words)
+            answer = f"Вероятность {text}: {random.randint(0, 100)}%"
+            command = SendMessage(chat_id=chat_id, text=answer)
+        case "кто" | "кого", *words:
             members = await GroupUserOrm.get_groups_user_by_telegram_chat_id(message.chat.id)
-            random_member: GroupUserOrm = random.choice(members)
-            answer = f'Я думаю {await random_member.mention_link_html()} ' + ' '.join(words)
+            if members:
+                random_member = random.choice(members)
+                answer = f"Я думаю {await random_member.mention_link_html()} " + " ".join(words)
+            else:
+                answer = "В чате нет участников"
             command = SendMessage(chat_id=chat_id, text=answer)
-        case 'кот', *text:
+        case "кот", *text:
             command = CommandCat(chat_id=chat_id, text=text)
-        case 'кража', *text:
+        case "кража", *_:
             answer = await func.rob(message, bot)
             command = SendMessage(chat_id=chat_id, text=answer)
-        case 'перевод', *text:
+        case "перевод", *text:
             answer = await func.transfer(message, bot, text)
             command = SendMessage(chat_id=chat_id, text=answer)
-        case 'убить', *text:
+        case "убить", *_:
             answer = await func.kill(message, bot)
             command = SendMessage(chat_id=chat_id, text=answer)
-        case 'топ', *text:
-            return await top_users(message, message_delete_service)
-        case ('minigames' | 'миниигры' | 'игры'), *_:
+        case "топ", *_:
+            answer = await func.get_top_users_money(message)
+            command = SendMessage(chat_id=chat_id, text=answer)
+        case ("minigames" | "миниигры" | "игры", *_):
             try:
-                redis.hset(f'mg:lobby:{chat_id}', mapping={'creator_id': message.from_user.id})
+                get_redis().hset(f"mg:lobby:{chat_id}", mapping={"creator_id": message.from_user.id})
             except Exception:
                 pass
             keyboard = build_inline_kb_minigames_select()
-            command = SendMessage(chat_id=chat_id, text='Выберите мини-игру:', reply_markup=keyboard)
-        case ('тест' | 'test', ):
-            answer, keyboard = await func.test(message, bot)
-            command = SendMessage(chat_id=chat_id, text=answer, reply_markup=keyboard)
+            command = SendMessage(chat_id=chat_id, text="Выберите мини-игру:", reply_markup=keyboard)
         case _:
             msg_from_db = await MessageOrm.get_messages(message.chat.id)
             if chat_settings.ai_generate_text:
-                messages = [{'role': 'user', 'content': f'[{msg[1] or msg[2] or msg[3]}] ' + msg[0]} for msg in
-                            reversed(msg_from_db)]
-                messages.append({'role': 'user', 'content': message.text})
-                response = await generate_text_from_ai(messages + messages_rules)
-                answer = response.choices[0].message.content
+                messages = [{"role": "user", "content": f"[{msg[1] or msg[2] or msg[3]}] " + msg[0]} for msg in reversed(msg_from_db)]
+                messages.append({"role": "user", "content": message.text})
+                answer = await generate_text_from_ai(messages + messages_rules)
+                answer = _tag_prefix(sub_tag) + answer
             else:
                 messages = [msg[0] for msg in msg_from_db]
                 messages.append(message.text)
-                answer = generate_text(messages)
+                answer = _tag_prefix(sub_tag) + generate_text(messages)
             command = SendMessage(chat_id=chat_id, text=answer)
-            # command = CommandUndefined(chat_id=chat_id)
     if command:
         await bot(command)
 
 
-@router.message(Command('profile'))
+@router.message(Command("profile"))
 async def profile(message: Message, message_delete_service: AutoDeleteService):
     answer, user_orm = await func.profile(message)
-    notification = '❌ Выключить' if user_orm.can_tag else '✅ Включить'
-    message_answer = await message.answer(
-        answer, reply_markup=await profile_change_settings(
-            message.from_user.id,
-            message.chat.id,
-            notification
-        )
+    notification = "❌ Выключить" if user_orm and user_orm.can_tag else "✅ Включить"
+    msg_answer = await message.answer(
+        answer,
+        reply_markup=await profile_change_settings(message.from_user.id, message.chat.id, notification),
     )
     message_delete_service.schedule(message.chat.id, message.message_id)
-    message_delete_service.schedule(message_answer.chat.id, message_answer.message_id)
+    message_delete_service.schedule(msg_answer.chat.id, msg_answer.message_id)
 
 
-@router.message(Command('top_users'))
+@router.message(Command("top_users"))
 async def top_users(message: Message, message_delete_service: AutoDeleteService):
     answer = await func.get_top_users_money(message)
-    message_answer = await message.answer(answer)
-
+    msg_answer = await message.answer(answer)
     message_delete_service.schedule(message.chat.id, message.message_id)
-    message_delete_service.schedule(message_answer.chat.id, message_answer.message_id)
+    message_delete_service.schedule(msg_answer.chat.id, msg_answer.message_id)
 
 
-@router.message(Command('minigames'))
+@router.message(Command("minigames"))
 async def minigames(message: Message):
     try:
-        redis.hset(f'mg:lobby:{message.chat.id}', mapping={'creator_id': message.from_user.id})
+        get_redis().hset(f"mg:lobby:{message.chat.id}", mapping={"creator_id": message.from_user.id})
     except Exception:
         pass
     keyboard = build_inline_kb_minigames_select()
-    await message.answer('Выберите мини-игру:', reply_markup=keyboard)
+    await message.answer("Выберите мини-игру:", reply_markup=keyboard)
 
 
-@router.message(Command('work'))
-async def work(message: Message, message_delete_service: AutoDeleteService):
-    answer = await func.work(message)
-    message_answer = await message.answer(answer)
-
+@router.message(Command("work"))
+async def work(message: Message, message_delete_service: AutoDeleteService, sub_tier: SubscriptionTier = SubscriptionTier.FREE):
+    answer = await func.work(message, sub_tier)
+    msg_answer = await message.answer(answer)
     message_delete_service.schedule(message.chat.id, message.message_id)
-    message_delete_service.schedule(message_answer.chat.id, message_answer.message_id)
+    message_delete_service.schedule(msg_answer.chat.id, msg_answer.message_id)
 
 
-@router.message(
-    F.text[0] != '/'
-)
-async def echo(
-        message: Message,
-        chat_settings: "TelegramChatOrm | None",
-):
+@router.message(Command("free"))
+async def free_cmd(message: Message, sub_tier: SubscriptionTier = SubscriptionTier.FREE):
+    answer = await func.free_from_prison(message, sub_tier)
+    await message.answer(answer)
+
+
+@router.message(Command("subscribe"))
+async def subscribe_cmd(message: Message):
+    keyboard = build_inline_kb_subscribe()
+    await message.answer("Выберите уровень подписки:", reply_markup=keyboard)
+
+
+@router.message(Command("donate"))
+async def donate_cmd(message: Message):
+    keyboard = build_inline_kb_donate()
+    await message.answer("💰 Поддержать проект Bot Vasya:", reply_markup=keyboard)
+
+
+@router.message(Command("advertise"))
+async def advertise_cmd(message: Message):
+    keyboard = build_inline_kb_webapp_advertise()
+    await message.answer("📢 Подача рекламы. Откройте форму:", reply_markup=keyboard)
+
+
+@router.message(Command("admin_panel"))
+async def admin_panel_cmd(message: Message):
+    if message.from_user.id not in _settings.ADMIN_ID_SET:
+        await message.answer("Эта команда доступна только администраторам")
+        return
+    keyboard = build_inline_kb_webapp_admin()
+    await message.answer("🛠 Админ-панель:", reply_markup=keyboard)
+
+
+@router.message(Command("casino"))
+async def casino(message: Message):
+    from keyboards.inline_kb_webapp_casino import build_inline_kb_webapp_casino
+
+    keyboard = build_inline_kb_webapp_casino()
+    await message.answer("Вход в казино", reply_markup=keyboard)
+
+
+@router.message(F.text[0] != "/")
+async def echo(message: Message, chat_settings: TelegramChatOrm | None):
     if message.text is None:
         return
-
     if message.via_bot or message.forward_origin:
         return
 
@@ -241,16 +274,14 @@ async def echo(
             return
 
     group_user: GroupUserOrm = await func.get_group_user(message)
+    await MessageOrm.insert_message(group_user.id, message.text.replace("@", ""))
 
-    await MessageOrm.insert_message(group_user.id, message.text.replace('@', ''))
-
-    if message.reply_to_message and message.reply_to_message.from_user.username == 'vasya_fun_bot':
+    if message.reply_to_message and message.reply_to_message.from_user.username == "vasya_fun_bot":
         msg_from_db = await MessageOrm.get_messages(message.chat.id)
         if chat_settings.ai_generate_text:
-            messages = [{'role': 'user', 'content': f'[{msg[1] or msg[2] or msg[3]}] ' + msg[0]} for msg in reversed(msg_from_db)]
-            messages.insert(-1, {'role': 'assistant', 'content': message.reply_to_message.text})
-            response = await generate_text_from_ai(messages + messages_rules)
-            answer = response.choices[0].message.content
+            messages = [{"role": "user", "content": f"[{msg[1] or msg[2] or msg[3]}] " + msg[0]} for msg in reversed(msg_from_db)]
+            messages.insert(-1, {"role": "assistant", "content": message.reply_to_message.text})
+            answer = await generate_text_from_ai(messages + messages_rules)
         else:
             messages = [msg[0] for msg in msg_from_db]
             answer = generate_text(messages)
@@ -258,35 +289,22 @@ async def echo(
         return
 
     try:
-        chance = redis.get(f'tg_chat_chance:{message.chat.id}')
+        chance = get_redis().get(f"tg_chat_chance:{message.chat.id}")
     except Exception:
         chance = None
     if chance is None:
         chance_row = await TelegramChatOrm.get_chance(message.chat.id)
         chance = chance_row.answer_chance if chance_row else chat_settings.answer_chance
         try:
-            redis.set(f'tg_chat_chance:{message.chat.id}', chance, ex=120)
-        except Exception as e:
-            print(f'Redis error: {e}')
+            get_redis().set(f"tg_chat_chance:{message.chat.id}", chance, ex=120)
+        except Exception:
+            pass
     if random.randint(1, 100) <= int(chance):
         msg_from_db = await MessageOrm.get_messages(message.chat.id)
         if chat_settings.ai_generate_text:
-            messages = [{'role': 'user', 'content': f'[{msg[1] or msg[2] or msg[3]}] ' + msg[0]} for msg in reversed(msg_from_db)]
-            response = await generate_text_from_ai(messages + messages_rules)
-            answer = response.choices[0].message.content
+            messages = [{"role": "user", "content": f"[{msg[1] or msg[2] or msg[3]}] " + msg[0]} for msg in reversed(msg_from_db)]
+            answer = await generate_text_from_ai(messages + messages_rules)
         else:
             messages = [msg[0] for msg in msg_from_db]
             answer = generate_text(messages)
         await message.answer(answer)
-
-
-@router.message(Command('profile_test'))
-async def profile_test(message: Message):
-    inline_kb = await build_inline_kb_start(message.chat.id, 'profile', '📱 Открыть профиль')
-    await message.answer('Быстрее смотри свой профиль!', reply_markup=inline_kb)
-
-
-@router.message(Command('casino'))
-async def casino(message: Message):
-    inline_kb = await build_inline_kb_start(message.chat.id, 'casino', '🎰 Открыть казино')
-    await message.answer('Вход в казино', reply_markup=inline_kb)

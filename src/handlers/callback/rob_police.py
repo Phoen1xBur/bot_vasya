@@ -1,47 +1,48 @@
-import aiogram
-from aiogram import Router, F, html
-from aiogram.types import CallbackQuery
-from aiogram.filters.chat_member_updated import ChatMemberUpdated, ChatMemberUpdatedFilter, JOIN_TRANSITION
-from aiogram.exceptions import TelegramBadRequest
+import logging
 
-from handlers import func
-from keyboards.inline_kb_rob_police import build_inline_kb_rob_police
-from models import TelegramChatOrm, MessageOrm
-from utils.filters import ChatTypeFilter
-from utils.enums import ChatType
+from aiogram import F, Router
+from aiogram.types import CallbackQuery
+
+from shared.models.money import Prison
+from shared.redis_client import get_redis
 
 router = Router(name=__name__)
-router.callback_query.filter()
+logger = logging.getLogger(__name__)
 
 
-# @router.callback_query(F.data.startswith('rob_police'))
-# async def rob_police_handler(callback_query: CallbackQuery):
-#     await callback_query.answer()
-
-
-@router.callback_query(F.data.startswith('rob_police'))
-async def rob_police_handler_yes(callback_query: CallbackQuery):
-    data = callback_query.data.split(':')
-    print(data)
-    await callback_query.answer(text='хули жмешь кнопку?')
-    name = callback_query.from_user.mention_html()
-    new_text = f'{name} нажал {data[1]}'
+@router.callback_query(F.data.startswith("rob:bribe:"))
+async def on_rob_bribe(callback: CallbackQuery):
+    """Дать взятку полиции (заглушка — можно расширить экономикой)."""
+    user_id = callback.from_user.id
+    chat_id = callback.message.chat.id if callback.message else 0
+    # Выта: снимаем 200 васякоинов, освобождаем
     try:
-        await callback_query.message.edit_text(
-            text=new_text,
-            reply_markup=build_inline_kb_rob_police(callback_query.from_user.id)
-        )
-    except TelegramBadRequest:
-        # Ошибка - скорее всего сообщение не изменилось
-        pass
+        from shared.models.group_user import GroupUserOrm
+
+        group_user = await GroupUserOrm.get_group_user(user_id, chat_id)
+        if group_user and group_user.money >= 200:
+            await group_user.money_minus(200)
+            Prison.free_prisoner(chat_id, user_id)
+            await callback.answer("Вы дали взятку и освобождены! −200 васякоинов", show_alert=True)
+            if callback.message:
+                await callback.message.edit_text("🤝 Вы дали взятку полиции и свободны.")
+        else:
+            await callback.answer("Недостаточно васякоинов для взятки (нужно 200)", show_alert=True)
+    except Exception:
+        logger.exception("Ошибка взятки")
+        await callback.answer("Произошла ошибка", show_alert=True)
 
 
-# @router.callback_query(F.data.startswith('no_from'))
-# async def rob_police_handler_no(callback_query: CallbackQuery):
-#     print(callback_query.id)
-#     await callback_query.answer(text='хули жмешь кнопку?')
-#     name = callback_query.from_user.mention_html()
-#     await callback_query.message.edit_text(
-#         text=f'{name} нажал нет',
-#         reply_markup=build_inline_kb_rob_police(callback_query.from_user.id)
-#     )
+@router.callback_query(F.data.startswith("rob:surrender:"))
+async def on_rob_surrender(callback: CallbackQuery):
+    """Сдаться полиции."""
+    user_id = callback.from_user.id
+    chat_id = callback.message.chat.id if callback.message else 0
+    try:
+        Prison.free_prisoner(chat_id, user_id)
+        await callback.answer("Вы отсидели... почти.", show_alert=False)
+        if callback.message:
+            await callback.message.edit_text("🚔 Вы сдались полиции. Тюрьма отменена (тест).")
+    except Exception:
+        logger.exception("Ошибка сдачи")
+        await callback.answer("Произошла ошибка", show_alert=True)
