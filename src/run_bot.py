@@ -5,7 +5,6 @@
 
 Не запускает FastAPI. Общается с API через shared.api_client.
 """
-from __future__ import annotations
 
 import asyncio
 import logging
@@ -18,6 +17,7 @@ from pyrogram import Client
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from shared.bot_identity import init_bot_identity  # noqa: E402
 from shared.config import get_settings  # noqa: E402
 from shared.logger import setup_logging  # noqa: E402
 
@@ -30,8 +30,9 @@ from utils.fix.fix_pyrogram import *  # noqa: F401,F403,E402
 bot = Bot(token=settings.TOKEN)
 dp = Dispatcher()
 
+# Имя сессии Pyrogram — это идентификатор файла, а не @username бота.
 app = Client(
-    "vasya_fun_bot",
+    "vasya_session",
     settings.API_ID,
     settings.API_HASH,
 )
@@ -52,6 +53,9 @@ async def start_bot() -> None:
     for mw in middlewares:
         dp.update.middleware(mw)
 
+    # Запрашиваем @username и id бота у Telegram один раз — используем
+    # во всех пользовательских строках (без хардкода ника).
+    await init_bot_identity(bot)
     await bot.set_my_commands(settings.MY_COMMANDS)
     bot.default.parse_mode = "HTML"
     await dp.start_polling(bot)

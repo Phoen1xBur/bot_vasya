@@ -2,7 +2,6 @@
 
 Порядок импорта важен для relationship-связей.
 """
-from __future__ import annotations
 
 from shared.models.user import UserOrm
 from shared.models.chat import TelegramChatOrm

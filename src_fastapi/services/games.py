@@ -3,7 +3,6 @@
 Ставки — в васякоинах чата-источника (chat_id комнаты).
 Комиссия бота — GAME_COMMISSION_PERCENT со ставок.
 """
-from __future__ import annotations
 
 import logging
 import random

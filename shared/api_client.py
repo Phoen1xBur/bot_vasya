@@ -3,7 +3,6 @@
 Бот не ходит в БД напрямую (кроме легаси-логики, до полной миграции).
 Деловые операции — через REST API.
 """
-from __future__ import annotations
 
 import logging
 from typing import Any

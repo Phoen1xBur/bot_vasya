@@ -3,7 +3,6 @@
 Development — DEBUG в консоль; Production — INFO в файл с ротацией.
 Отдельный логгер платежей — для аудита.
 """
-from __future__ import annotations
 
 import logging
 import os

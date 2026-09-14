@@ -3,7 +3,6 @@
 Если RabbitMQ недоступен — сервисы продолжают работать без шины
 (degraded mode).
 """
-from __future__ import annotations
 
 import asyncio
 import json

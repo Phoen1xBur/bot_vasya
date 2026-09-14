@@ -1,5 +1,4 @@
 """Роутер рекламы: подача заявок, AI-проверка, админ-управление, таргетинг."""
-from __future__ import annotations
 
 import logging
 

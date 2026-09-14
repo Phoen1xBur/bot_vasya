@@ -1,17 +1,19 @@
 from aiogram.types import URLInputFile
 from aiogram.methods import SendMessage, SendPhoto
 
+from shared.bot_identity import help_mention
 from shared.config import HELP_TEXT
 
 
 class CommandUndefined(SendMessage):
-    text: str = (
-        "Я ничего не понял, что ты хочешь от меня\n"
-        "Можешь написать /help@vasya_fun_bot для справки"
-    )
-
     def __init__(self, chat_id: int):
-        super().__init__(chat_id=chat_id)
+        super().__init__(
+            chat_id=chat_id,
+            text=(
+                "Я ничего не понял, что ты хочешь от меня\n"
+                f"Можешь написать {help_mention()} для справки"
+            ),
+        )
 
 
 class CommandStart(SendMessage):

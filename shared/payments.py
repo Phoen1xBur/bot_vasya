@@ -5,7 +5,6 @@
 - Проверка статуса (get_state / check_order)
 - Отмена/возврат (payment_cancel)
 """
-from __future__ import annotations
 
 import logging
 from typing import Any

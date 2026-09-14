@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from pyrogram.enums import ChatMemberStatus
 from sqlalchemy import ForeignKey

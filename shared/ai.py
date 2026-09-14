@@ -7,7 +7,6 @@
 
 Логирование всех запросов (контроль расходов). Лимиты по подписке.
 """
-from __future__ import annotations
 
 import json
 import logging

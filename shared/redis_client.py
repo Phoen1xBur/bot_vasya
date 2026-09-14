@@ -1,5 +1,4 @@
 """Синглтон Redis-клиент для обоих сервисов."""
-from __future__ import annotations
 
 import redis as redis_package
 

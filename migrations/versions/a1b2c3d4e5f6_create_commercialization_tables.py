@@ -10,7 +10,6 @@ ad_campaign, chat_unique_users, game_room, game_participant.
 Существующие таблицы (user, telegram_chat, group_user, message,
 profession, transaction) НЕ трогаем.
 """
-from __future__ import annotations
 
 from typing import Sequence, Union
 

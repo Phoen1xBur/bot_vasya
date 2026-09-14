@@ -6,7 +6,6 @@
 - Ожидаемый доход от кражи ≈ работе, но с большой дисперсией.
 - Множители подписок — только к работе (стимул + балансировка).
 """
-from __future__ import annotations
 
 import random
 from dataclasses import dataclass

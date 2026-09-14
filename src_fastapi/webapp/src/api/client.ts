@@ -11,8 +11,8 @@ export class ApiError extends Error {
   }
 }
 
-function authHeader(): string {
-  return getInitData();
+function authHeader(): { name: string; value: string } {
+  return { name: "X-Telegram-Init-Data", value: getInitData() };
 }
 
 async function request<T>(
@@ -30,8 +30,9 @@ async function request<T>(
       if (v != null && v !== "") url.searchParams.set(k, String(v));
     }
   }
+  const { name: authName, value: authValue } = authHeader();
   const headers: Record<string, string> = {
-    Authorization: authHeader(),
+    [authName]: authValue,
   };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";

@@ -8,6 +8,7 @@ from aiogram.types import Message
 
 from shared.config import get_settings
 from shared.enums import SubscriptionTier
+from shared.bot_identity import is_bot_user
 from shared.models import GroupUserOrm, MessageOrm, TelegramChatOrm
 from shared.redis_client import get_redis
 from keyboards.inline_kb_minigames import build_inline_kb_minigames_select
@@ -276,7 +277,10 @@ async def echo(message: Message, chat_settings: TelegramChatOrm | None):
     group_user: GroupUserOrm = await func.get_group_user(message)
     await MessageOrm.insert_message(group_user.id, message.text.replace("@", ""))
 
-    if message.reply_to_message and message.reply_to_message.from_user.username == "vasya_fun_bot":
+    if message.reply_to_message and is_bot_user(
+        message.reply_to_message.from_user.id,
+        getattr(message.reply_to_message.from_user, "username", None),
+    ):
         msg_from_db = await MessageOrm.get_messages(message.chat.id)
         if chat_settings.ai_generate_text:
             messages = [{"role": "user", "content": f"[{msg[1] or msg[2] or msg[3]}] " + msg[0]} for msg in reversed(msg_from_db)]

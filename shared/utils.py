@@ -1,5 +1,4 @@
 """Общие утилиты (без зависимости от aiogram-классов, где можно)."""
-from __future__ import annotations
 
 import random
 

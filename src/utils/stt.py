@@ -6,7 +6,6 @@
 - Graceful disable если модель не найдена (VOSK_ENABLED=false).
 Готова к запуску на мощном сервере.
 """
-from __future__ import annotations
 
 import asyncio
 import json

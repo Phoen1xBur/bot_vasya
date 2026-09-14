@@ -4,7 +4,6 @@
 - POST /api/payments/webhook — приём уведомления от Т-Банка (проверка подписи!)
 - GET  /api/payments/status — проверить статус по order_id
 """
-from __future__ import annotations
 
 import json
 import logging

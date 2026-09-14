@@ -1,6 +1,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from shared.models.group_user import GroupUserOrm
+from handlers.callback.callback_data.user_settings import UserSettings
 
 
 async def profile_change_settings(user_id: int, tg_chat_id: int, notification: str) -> InlineKeyboardMarkup:
@@ -9,6 +10,11 @@ async def profile_change_settings(user_id: int, tg_chat_id: int, notification: s
     label = "❌ Выключить тег" if can_tag else "✅ Включить тег"
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=label, callback_data=f"profile:toggle_tag:{tg_chat_id}")]
+            [
+                InlineKeyboardButton(
+                    text=label,
+                    callback_data=UserSettings(action="toggle_tag", chat_id=tg_chat_id).pack(),
+                )
+            ]
         ]
     )

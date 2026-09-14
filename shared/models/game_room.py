@@ -1,11 +1,9 @@
-from __future__ import annotations
 
 import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, String, Integer, DateTime, JSON, ForeignKey, select
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import BigInteger, String, Integer, DateTime, JSON, ForeignKey, Uuid, select
 from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.database import Base, async_session_factory
@@ -20,7 +18,7 @@ class GameRoomOrm(Base):
 
     __tablename__ = "game_room"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     game_type: Mapped[GameType] = mapped_column(index=True)
     chat_id: Mapped[int] = mapped_column(BigInteger, index=True)  # чат-источник
     initiator_id: Mapped[int] = mapped_column(BigInteger, index=True)
@@ -119,8 +117,8 @@ class GameParticipantOrm(Base):
     __tablename__ = "game_participant"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    room_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("game_room.id", ondelete="CASCADE"), index=True
+    room_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("game_room.id", ondelete="CASCADE"), index=True
     )
     user_id: Mapped[int] = mapped_column(BigInteger, index=True)
     bet: Mapped[int] = mapped_column(Integer, default=0)

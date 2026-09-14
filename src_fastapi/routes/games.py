@@ -2,7 +2,6 @@
 
 Валидация initData в каждом эндпоинте. Проверка участников для дуэли.
 """
-from __future__ import annotations
 
 import logging
 

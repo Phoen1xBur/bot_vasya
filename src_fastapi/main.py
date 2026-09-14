@@ -6,7 +6,6 @@
 
 Не зависит от бота. Бот обращается к этому сервису через HTTP.
 """
-from __future__ import annotations
 
 import asyncio
 import logging

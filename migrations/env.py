@@ -1,5 +1,4 @@
 """Alembic env. Импортируем все модели из shared, чтобы autogenerate видел их."""
-from __future__ import annotations
 
 import asyncio
 import os

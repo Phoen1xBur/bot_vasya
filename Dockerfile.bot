@@ -1,0 +1,26 @@
+# ============================================================================
+# Bot-сервис (aiogram 3 + Pyrogram): polling, обработчики, middleware,
+# воркер RabbitMQ. Общается с БД (legacy-логика) и API через HTTP.
+# ============================================================================
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libc6-dev libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Боту нужен shared/ (конфиг/модели/утилиты) и src/
+COPY shared ./shared
+COPY src ./src
+COPY migrations ./migrations
+COPY alembic.ini ./
+
+CMD ["python", "-m", "src.run_bot"]

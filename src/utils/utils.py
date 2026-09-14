@@ -3,7 +3,6 @@
 Markovify — для дешёвой генерации на основе истории сообщений чата.
 Mistral (через shared.ai) — для AI-режима чата (когда включён).
 """
-from __future__ import annotations
 
 import logging
 import random

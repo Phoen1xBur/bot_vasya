@@ -5,7 +5,6 @@
 
 Подход: жадный алгоритм с учётом пересечений + откат при переборе.
 """
-from __future__ import annotations
 
 import logging
 from dataclasses import dataclass

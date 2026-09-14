@@ -1,5 +1,4 @@
 """Роутер пользователя: профиль (баланс васякоинов)."""
-from __future__ import annotations
 
 import logging
 

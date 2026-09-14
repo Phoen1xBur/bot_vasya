@@ -2,7 +2,6 @@
 
 Секреты — только из переменных окружения / .env. Никаких хардкодов.
 """
-from __future__ import annotations
 
 import json
 from functools import lru_cache
@@ -61,6 +60,10 @@ class Settings(BaseSettings):
     DB_NAME: str = "bot_vasya"
     DB_USER: str = "postgres"
     DB_PASS: str = "postgres"
+    # Полный URL переопределяет assembled-URL (для тестов на SQLite:
+    # DATABASE_URL=sqlite+aiosqlite:///:memory:, DATABASE_URL_SYNC=sqlite:///:memory:).
+    DATABASE_URL: str = ""
+    DATABASE_URL_SYNC: str = ""
 
     # --- Redis ---
     REDIS_HOST: str = "localhost"
@@ -148,10 +151,14 @@ class Settings(BaseSettings):
 
     @property
     def DATABASE_URL_asyncpg(self) -> str:
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
         return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
     @property
     def DATABASE_URL_psycopg(self) -> str:
+        if self.DATABASE_URL_SYNC:
+            return self.DATABASE_URL_SYNC
         return f"postgresql+psycopg://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
     @property

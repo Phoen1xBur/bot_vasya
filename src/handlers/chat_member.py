@@ -3,6 +3,7 @@ from aiogram import Router, F, html
 from aiogram.filters.chat_member_updated import ChatMemberUpdated, ChatMemberUpdatedFilter, JOIN_TRANSITION
 
 from handlers import func
+from shared.bot_identity import help_mention
 from shared.models import MessageOrm, TelegramChatOrm
 from utils.filters import ChatTypeFilter
 from shared.enums import ChatType
@@ -17,7 +18,7 @@ async def bot_invite_chat(event: ChatMemberUpdated):
     await func.update_users(event)
     await event.answer(
         f"Всем привет, спасибо что пригласили меня в {html.quote(event.chat.title)}\n"
-        f'Команды: {html.quote("/help@vasya_fun_bot")}'
+        f"Команды: {html.quote(help_mention())}"
     )
 
 

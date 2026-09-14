@@ -4,7 +4,6 @@
 Бот (src/) обращается к данным через HTTP-клиент к API, а не к БД напрямую —
 кроме легаси-логики (work/rob/profile), которая до миграции на API ходит в БД.
 """
-from __future__ import annotations
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import (

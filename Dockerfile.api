@@ -1,0 +1,44 @@
+# ============================================================================
+# API-сервис (FastAPI): REST-эндпоинты, БД, платежи, игры, реклама + WebApp.
+# Многоступенчатая сборка: сначала собираем React-SPA (node), потом python.
+# ============================================================================
+FROM node:22-alpine AS webapp-builder
+WORKDIR /build
+# Кэш зависимостей: копируем манифесты раньше исходников
+COPY src_fastapi/webapp/package.json src_fastapi/webapp/package-lock.json* ./
+RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+COPY src_fastapi/webapp/ .
+RUN npm run build
+# результат: /build/static/dist
+
+FROM python:3.11-slim AS runtime
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Системные зависимости для сборки asyncpg/psycopg
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libc6-dev libpq-dev curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Код приложения
+COPY shared ./shared
+COPY src_fastapi ./src_fastapi
+COPY src ./src
+COPY migrations ./migrations
+COPY alembic.ini ./
+
+# Собранная статика WebApp
+COPY --from=webapp-builder /build/static/dist ./src_fastapi/webapp/static/dist
+
+EXPOSE 8000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+    CMD curl -fsS http://127.0.0.1:8000/health || exit 1
+
+# Применяем миграции, затем запускаем Uvicorn
+CMD ["sh", "-c", "alembic upgrade head && python -m src_fastapi.main"]
