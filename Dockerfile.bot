@@ -2,7 +2,7 @@
 # Bot-сервис (aiogram 3 + Pyrogram): polling, обработчики, middleware,
 # воркер RabbitMQ. Общается с БД (legacy-логика) и API через HTTP.
 # ============================================================================
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
