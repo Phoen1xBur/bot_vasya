@@ -1,17 +1,75 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { api, ApiError } from "../api/client";
-import type { AdCampaign, AdminStats, AdminPrices, Payment } from "../types";
-import { haptic, hapticNotify } from "../lib/telegram";
+import { api, ApiError, formatApiDetail } from "../api/client";
+import type { AdCampaign, AdminStats, AdminPrices, Payment, AdminSubscription } from "../types";
+import { haptic, hapticNotify , goBackOrClose } from "../lib/telegram";
 import { soundClick } from "../lib/sound";
 import GlassCard from "../components/GlassCard";
 import NeonButton from "../components/NeonButton";
 import {
   ShieldIcon, ChartIcon, TagIcon, PaymentIcon,
-  CheckIcon, XIcon, AdIcon, BackIcon,
+  CheckIcon, XIcon, AdIcon, BackIcon, CrownIcon,
 } from "../components/icons";
 
-type Tab = "campaigns" | "stats" | "prices" | "payments";
+type Tab = "campaigns" | "stats" | "prices" | "payments" | "subscriptions";
+
+const STATUS_RU: Record<string, string> = {
+  draft: "Черновик",
+  ai_pending: "На проверке ИИ",
+  ai_approved: "ИИ одобрил",
+  ai_rejected: "ИИ отклонил",
+  admin_pending: "Ждёт админа",
+  approved: "Одобрено",
+  rejected: "Отклонено",
+  paid: "Оплачено",
+  sending: "Рассылка",
+  sent: "Отправлено",
+  cancelled: "Отменено",
+  active: "Активна",
+  expired: "Истекла",
+  pending: "Ожидание",
+  none: "Нет",
+  NEW: "Новый",
+  PENDING: "В обработке",
+  AUTHORIZED: "Авторизован",
+  CONFIRMED: "Подтверждён",
+  REJECTED: "Отклонён",
+  REFUNDED: "Возврат",
+  PARTIAL_REFUNDED: "Частичный возврат",
+  CANCELLED: "Отменён",
+  DEADLINE_EXPIRED: "Просрочен",
+  confirmed: "Подтверждён",
+  failed: "Ошибка",
+};
+
+const PAYMENT_TYPE_RU: Record<string, string> = {
+  subscription: "Подписка",
+  donation: "Донат",
+  order: "Заказ",
+  ad_campaign: "Реклама",
+};
+
+const TIER_RU: Record<string, string> = {
+  vip: "VIP",
+  premium: "Premium",
+  elite: "Elite",
+  free: "Бесплатный",
+  VIP: "VIP",
+  PREMIUM: "Premium",
+  ELITE: "Elite",
+  FREE: "Бесплатный",
+};
+
+function ruStatus(s: string) {
+  return STATUS_RU[s] || STATUS_RU[s?.toLowerCase?.()] || s;
+}
+function ruPayType(s: string) {
+  return PAYMENT_TYPE_RU[s] || PAYMENT_TYPE_RU[s?.toLowerCase?.()] || s;
+}
+function ruTier(s: string) {
+  return TIER_RU[s] || TIER_RU[s?.toLowerCase?.()] || s;
+}
+
 
 export default function Admin() {
   const [tab, setTab] = useState<Tab>("campaigns");
@@ -43,7 +101,7 @@ export default function Admin() {
           <h2 className="text-2xl font-bold text-red-400">Доступ запрещён</h2>
           <p className="text-white/50 text-sm mt-2">{deniedMsg}</p>
         </GlassCard>
-        <NeonButton variant="cyan" size="sm" onClick={() => window.history.back()}>
+        <NeonButton variant="cyan" size="sm" onClick={() => goBackOrClose("/webapp/?page=casino")}>
           <span className="flex items-center gap-2"><BackIcon size={16} /> Назад</span>
         </NeonButton>
       </div>
@@ -52,6 +110,7 @@ export default function Admin() {
 
   const tabs: { id: Tab; label: string; icon: typeof ShieldIcon }[] = [
     { id: "campaigns", label: "Заявки", icon: AdIcon },
+    { id: "subscriptions", label: "Подписки", icon: CrownIcon },
     { id: "stats", label: "Статистика", icon: ChartIcon },
     { id: "prices", label: "Цены", icon: TagIcon },
     { id: "payments", label: "Платежи", icon: PaymentIcon },
@@ -92,6 +151,7 @@ export default function Admin() {
             transition={{ duration: 0.2 }}
           >
             {tab === "campaigns" && <CampaignsTab />}
+            {tab === "subscriptions" && <SubscriptionsTab />}
             {tab === "stats" && <StatsTab />}
             {tab === "prices" && <PricesTab />}
             {tab === "payments" && <PaymentsTab />}
@@ -206,7 +266,7 @@ function CampaignsTab() {
           <GlassCard>
             <div className="flex items-start justify-between gap-2 mb-2">
               <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${statusColors[c.status] ?? "glass"}`}>
-                {c.status}
+                {ruStatus(c.status)}
               </span>
               <span className="text-white/40 text-xs">{new Date(c.created_at ?? "").toLocaleString("ru-RU")}</span>
             </div>
@@ -309,7 +369,7 @@ function StatsTab() {
         <div className="space-y-2">
           {Object.entries(stats.ad_campaigns_by_status).map(([status, count]) => (
             <div key={status} className="flex items-center justify-between text-sm">
-              <span className="text-white/60">{status}</span>
+              <span className="text-white/60">{ruStatus(status)}</span>
               <span className="font-bold">{count}</span>
             </div>
           ))}
@@ -371,11 +431,11 @@ function PricesTab() {
   if (!prices) return <GlassCard className="text-center text-white/40">Нет данных</GlassCard>;
 
   const fields: { key: keyof AdminPrices; label: string; hint?: string }[] = [
-    { key: "sub_vip", label: "VIP (коп.)" },
-    { key: "sub_premium", label: "Premium (коп.)" },
-    { key: "sub_elite", label: "Elite (коп.)" },
-    { key: "ad_per_1000", label: "Реклама за 1000 (коп.)" },
-    { key: "ai_check_enabled", label: "AI проверка (true/false)" },
+    { key: "sub_vip", label: "Подписка VIP", hint: "Цена в копейках за 30 дней" },
+    { key: "sub_premium", label: "Подписка Premium", hint: "Цена в копейках за 30 дней" },
+    { key: "sub_elite", label: "Подписка Elite", hint: "Цена в копейках за 30 дней" },
+    { key: "ad_per_1000", label: "Реклама за 1000 охвата", hint: "Цена в копейках" },
+    { key: "ai_check_enabled", label: "Проверка рекламы ИИ", hint: "true = включено, false = выключено" },
   ];
 
   return (
@@ -385,7 +445,10 @@ function PricesTab() {
         <div className="space-y-3">
           {fields.map((f) => (
             <div key={f.key}>
-              <label className="text-white/50 text-xs block mb-1">{f.label}</label>
+              <label className="text-white/50 text-xs block mb-1">
+                {f.label}
+                {f.hint && <span className="block text-white/30 normal-case">{f.hint}</span>}
+              </label>
               <input
                 type="text"
                 value={edit[f.key] ?? ""}
@@ -412,13 +475,7 @@ function PaymentsTab() {
 
   useEffect(() => {
     api.getPayments(50)
-      .then((r) =>
-        setPayments(
-          (r.payments || []).filter(
-            (p) => p.status !== "NEW" && p.status !== "PENDING"
-          )
-        )
-      )
+      .then((r) => setPayments(r.payments))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -440,11 +497,11 @@ function PaymentsTab() {
           <GlassCard className="flex items-center justify-between gap-2">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-mono truncate">{p.order_id}</p>
-              <p className="text-white/40 text-xs">ID: {p.user_id} · {p.payment_type}</p>
+              <p className="text-white/40 text-xs">Пользователь: {p.user_id} · {ruPayType(p.payment_type)}</p>
             </div>
             <div className="text-right">
               <p className="font-bold text-sm">{(p.amount / 100).toLocaleString("ru-RU")} ₽</p>
-              <p className={`text-xs ${statusColors[p.status] ?? "text-white/50"}`}>{p.status}</p>
+              <p className={`text-xs ${statusColors[p.status] ?? statusColors[p.status?.toLowerCase?.()] ?? "text-white/50"}`}>{ruStatus(p.status)}</p>
             </div>
           </GlassCard>
         </motion.div>
@@ -452,3 +509,112 @@ function PaymentsTab() {
     </div>
   );
 }
+
+// ---- Subscriptions Tab ----
+function SubscriptionsTab() {
+  const [items, setItems] = useState<AdminSubscription[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    api.getAdminSubscriptions()
+      .then((r) => setItems(r.subscriptions))
+      .catch((e) => setMsg(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const onCancelRefund = async (s: AdminSubscription) => {
+    const name = s.username ? `@${s.username}` : (s.first_name || String(s.user_id));
+    const ok = window.confirm(
+      `Отменить подписку ${ruTier(s.tier)} у ${name} и вернуть деньги за последний платёж?\n\nЭто действие необратимо.`
+    );
+    if (!ok) return;
+    setBusyId(s.id);
+    setMsg(null);
+    try {
+      const res = await api.cancelRefundSubscription(s.id);
+      hapticNotify("success");
+      setMsg(
+        res.refund_skipped
+          ? `Подписка отменена. Возврат пропущен: ${res.refund_skipped}`
+          : "Подписка отменена, возврат отправлен в Т-Банк"
+      );
+      load();
+    } catch (e) {
+      hapticNotify("error");
+      setMsg(e instanceof ApiError ? formatApiDetail(e.detail) || e.message : String(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-12">
+        <div className="w-8 h-8 border-2 border-neon-purple/30 border-t-neon-purple rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {msg && <GlassCard className="text-sm text-neon-cyan">{msg}</GlassCard>}
+      {items.length === 0 && (
+        <GlassCard className="text-center text-white/40">Нет активных подписок</GlassCard>
+      )}
+      {items.map((s, i) => (
+        <motion.div
+          key={s.id}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: i * 0.03 }}
+        >
+          <GlassCard className="flex flex-col gap-2">
+            <div className="flex justify-between gap-2">
+              <div>
+                <p className="font-bold">
+                  {ruTier(s.tier)}{" "}
+                  <span className="text-white/40 text-xs font-normal">#{s.id}</span>
+                </p>
+                <p className="text-white/60 text-xs mt-0.5">
+                  {s.username ? `@${s.username}` : s.first_name || "—"} · ID {s.user_id}
+                </p>
+                <p className="text-white/40 text-xs mt-1">
+                  До:{" "}
+                  {s.expires_at
+                    ? new Date(s.expires_at).toLocaleString("ru-RU")
+                    : "—"}
+                  {" · "}
+                  Автопродление: {s.auto_renew ? "да" : "нет"}
+                  {s.has_recurring_key ? " · рекуррент Т-Банк" : ""}
+                </p>
+                {s.payment && (
+                  <p className="text-white/40 text-xs mt-1">
+                    Платёж: {s.payment.order_id} · {(s.payment.amount / 100).toLocaleString("ru-RU")} ₽ ·{" "}
+                    {ruStatus(s.payment.status)}
+                  </p>
+                )}
+              </div>
+              <div className="text-right">
+                <span className="text-xs text-emerald-400">{ruStatus(s.status)}</span>
+              </div>
+            </div>
+            <NeonButton
+              variant="danger"
+              size="sm"
+              disabled={busyId === s.id}
+              onClick={() => onCancelRefund(s)}
+            >
+              {busyId === s.id ? "Отмена…" : "Отменить и вернуть деньги"}
+            </NeonButton>
+          </GlassCard>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+

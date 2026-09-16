@@ -74,6 +74,23 @@ class PaymentOrm(Base):
             await session.commit()
             return payment
 
+
+    @staticmethod
+    async def get_last_confirmed_subscription(user_id: int) -> "PaymentOrm | None":
+        """Последний успешный платёж подписки пользователя (для refund)."""
+        async with _session() as session:
+            result = await session.execute(
+                select(PaymentOrm)
+                .filter(
+                    PaymentOrm.user_id == user_id,
+                    PaymentOrm.payment_type == PaymentType.SUBSCRIPTION,
+                    PaymentOrm.status == PaymentStatus.CONFIRMED,
+                )
+                .order_by(PaymentOrm.created_at.desc())
+                .limit(1)
+            )
+            return result.scalars().first()
+
     @staticmethod
     async def mark_fulfilled(order_id: str) -> bool:
         """Возвращает True если ТОЛЬКО ЧТО пометили выданным (защита от дублей)."""

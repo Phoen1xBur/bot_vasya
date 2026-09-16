@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime as dt, timedelta as td
 import logging
 import random
@@ -41,19 +40,7 @@ from run_bot import app  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-_pyrogram_lock = asyncio.Lock()
-
-
-async def ensure_pyrogram() -> None:
-    """Keep one long-lived Pyrogram session (avoid sqlite closed database)."""
-    async with _pyrogram_lock:
-        if not app.is_connected:
-            await app.start()
-
-
-
 MEMBER_TYPE_ADMIN = (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR)
-
 
 
 async def ensure_group_user_from_message(message: Message) -> GroupUserOrm:
@@ -63,9 +50,7 @@ async def ensure_group_user_from_message(message: Message) -> GroupUserOrm:
         raise ValueError("message.from_user is required")
     await TelegramChatOrm.insert_or_update_telegram_chat(message.chat.id)
     await UserOrm.insert_or_update_user(tg_user.id, tg_user)
-    await GroupUserOrm.insert_or_update_group_user(
-        tg_user.id, message.chat.id, chat_member_status=ChatMemberStatus.MEMBER
-    )
+    await GroupUserOrm.insert_or_update_group_user(tg_user.id, message.chat.id)
     group_user = await GroupUserOrm.get_group_user(tg_user.id, message.chat.id)
     if group_user is None:
         raise RuntimeError(f"Failed to upsert GroupUser user={tg_user.id} chat={message.chat.id}")
@@ -79,6 +64,7 @@ async def get_group_user(message: Message) -> GroupUserOrm:
         return group_user
 
     group_user = await ensure_group_user_from_message(message)
+    # Фоновая синхронизация всего чата — best-effort, сбой не ломает «вася …»
     try:
         await update_users(message)
     except Exception:
@@ -93,27 +79,46 @@ async def get_group_user(message: Message) -> GroupUserOrm:
 
 async def update_users(event: ChatMemberUpdated | Message) -> None:
     """Синхронизация участников чата с БД + обновление chat_unique_users."""
-    await ensure_pyrogram()
-    async for member in app.get_chat_members(event.chat.id):
-        if member.user.is_bot:
-            continue
-        await UserOrm.insert_or_update_user(member.user.id, member.user)
-        await GroupUserOrm.insert_or_update_group_user(
-            member.user.id, event.chat.id, chat_member_status=member.status
-        )
-    # Обновляем кэш уникальных пользователей для таргетинга рекламы
+    try:
+        async with app:
+            async for member in app.get_chat_members(event.chat.id):
+                if member.user.is_bot:
+                    continue
+                await UserOrm.insert_or_update_user(member.user.id, member.user)
+                await GroupUserOrm.insert_or_update_group_user(
+                    member.user.id, event.chat.id, chat_member_status=member.status
+                )
+    except (EOFError, OSError) as exc:
+        logger.warning("Pyrogram update_users aborted (%s); skipping full sync", exc)
+        return
+    except Exception:
+        logger.warning("Pyrogram update_users failed; skipping full sync", exc_info=True)
+        return
     await _update_chat_unique_users(event.chat.id)
 
 
 async def update_user(event: ChatMemberUpdated) -> None:
-    await ensure_pyrogram()
     try:
-        member = await app.get_chat_member(event.chat.id, event.new_chat_member.user.id)
-    except pyrogram.errors.bad_request_400.UserNotParticipant:
-        await GroupUserOrm.insert_or_update_group_user(
-            event.new_chat_member.user.id, event.chat.id,
-            chat_member_status=ChatMemberStatus.LEFT,
-        )
+        async with app:
+            try:
+                member = await app.get_chat_member(event.chat.id, event.new_chat_member.user.id)
+            except pyrogram.errors.bad_request_400.UserNotParticipant:
+                await GroupUserOrm.insert_or_update_group_user(
+                    event.new_chat_member.user.id, event.chat.id,
+                    chat_member_status=ChatMemberStatus.LEFT,
+                )
+                return
+    except (EOFError, OSError) as exc:
+        logger.warning("Pyrogram update_user aborted (%s); upsert from event", exc)
+        u = event.new_chat_member.user
+        await UserOrm.insert_or_update_user(u.id, u)
+        await GroupUserOrm.insert_or_update_group_user(u.id, event.chat.id)
+        return
+    except Exception:
+        logger.warning("Pyrogram update_user failed; upsert from event", exc_info=True)
+        u = event.new_chat_member.user
+        await UserOrm.insert_or_update_user(u.id, u)
+        await GroupUserOrm.insert_or_update_group_user(u.id, event.chat.id)
         return
     if member.user.is_bot:
         return
@@ -135,11 +140,18 @@ async def _update_chat_unique_users(chat_id: int) -> None:
 
 
 async def get_user_by_username(chat_id: int, username: str) -> pyrogram.types.User | None:
-    await ensure_pyrogram()
     try:
-        member = await app.get_chat_member(chat_id, username)
-        return member.user
-    except pyrogram.errors.bad_request_400.UserNotParticipant:
+        async with app:
+            try:
+                member = await app.get_chat_member(chat_id, username)
+                return member.user
+            except pyrogram.errors.bad_request_400.UserNotParticipant:
+                return None
+    except (EOFError, OSError) as exc:
+        logger.warning("get_user_by_username pyrogram aborted (%s)", exc)
+        return None
+    except Exception:
+        logger.warning("get_user_by_username failed", exc_info=True)
         return None
 
 
@@ -152,15 +164,15 @@ async def set_chance(message: Message, chance: int) -> str:
     if chance > 100 or chance < 0:
         return answer_error
     await TelegramChatOrm.change_answer_chance(message.chat.id, chance)
-    return f"Шанс сообщения изменен на {chance}"
+    return f"✅ Шанс ответа Васи изменён на <b>{chance}%</b>"
 
 
 async def get_chance(message: Message) -> tuple[str, int]:
     chance_row = await TelegramChatOrm.get_chance(message.chat.id)
     chance = chance_row.answer_chance if chance_row else 5
     answer = (
-        f"Шанс сообщения в группе {chance}%\n"
-        f'Для изменения шанса напишите "Вася шанс [число шанса от 0 до 100]"'
+        f"🎲 Шанс ответа Васи в этом чате: <b>{chance}%</b>\n"
+        f'Изменить (только админы): <code>вася шанс 0–100</code>'
     )
     return answer, chance
 

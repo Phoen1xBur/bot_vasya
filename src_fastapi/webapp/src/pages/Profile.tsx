@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { api, ApiError } from "../api/client";
+import { api, ApiError, formatApiDetail } from "../api/client";
 import type { UserProfile, SubscriptionInfo } from "../types";
-import { getUrlParams, getCurrentUserId } from "../lib/telegram";
+import { getUrlParams, getCurrentUserId, goBackOrClose, hasTelegramInitData } from "../lib/telegram";
 import GlassCard from "../components/GlassCard";
-import { CoinIcon, UserIcon, CrownIcon } from "../components/icons";
+import NeonButton from "../components/NeonButton";
+import { CoinIcon, UserIcon, CrownIcon, BackIcon } from "../components/icons";
 
 const TIER_GRADIENTS: Record<string, string> = {
   VIP: "from-amber-400 to-yellow-600",
@@ -18,26 +19,43 @@ export default function Profile() {
   const [sub, setSub] = useState<SubscriptionInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [canTag, setCanTag] = useState<boolean | null>(null);
+  const [tagBusy, setTagBusy] = useState(false);
+  const chatIdParam = getUrlParams().chat_id ? parseInt(getUrlParams().chat_id!, 10) : null;
 
   useEffect(() => {
     const params = getUrlParams();
     const chatId = params.chat_id ? parseInt(params.chat_id) : null;
-    const myId = getCurrentUserId();
 
     Promise.all([
       api.getProfile(chatId),
       api.getMySubscription(),
+      chatId ? api.getUserSettings(chatId).catch(() => null) : Promise.resolve(null),
     ])
-      .then(([p, s]) => {
+      .then(([p, s, settings]) => {
         setProfile(p);
         setSub(s);
+        if (settings) setCanTag(settings.can_tag);
       })
       .catch((e) => {
-        if (e instanceof ApiError) setError(e.detail?.toString?.() ?? e.message);
+        if (e instanceof ApiError) setError(formatApiDetail(e.detail) || e.message);
         else setError(e instanceof Error ? e.message : String(e));
       })
       .finally(() => setLoading(false));
   }, []);
+
+  const onToggleTag = async () => {
+    if (!chatIdParam || tagBusy) return;
+    setTagBusy(true);
+    try {
+      const r = await api.toggleTag(chatIdParam);
+      setCanTag(r.can_tag);
+    } catch (e) {
+      setError(e instanceof ApiError ? formatApiDetail(e.detail) || e.message : String(e));
+    } finally {
+      setTagBusy(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -49,11 +67,18 @@ export default function Profile() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen px-4">
+      <div className="flex flex-col items-center justify-center min-h-screen px-4 gap-4">
         <GlassCard className="max-w-md text-center">
           <p className="text-red-400">{error}</p>
-          <p className="text-white/40 text-sm mt-2">chat_id / initData required</p>
+          <p className="text-white/40 text-sm mt-2">
+            {hasTelegramInitData()
+              ? "Не удалось загрузить профиль. Закройте WebApp и откройте снова из меню бота."
+              : "Откройте WebApp из Telegram (меню бота или кнопка в чате)"}
+          </p>
         </GlassCard>
+        <NeonButton variant="cyan" onClick={() => goBackOrClose()}>
+          <span className="flex items-center gap-2"><BackIcon size={16} /> Назад</span>
+        </NeonButton>
       </div>
     );
   }
@@ -147,6 +172,31 @@ export default function Profile() {
           </GlassCard>
         </motion.div>
       )}
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="w-full max-w-sm flex flex-col gap-2"
+      >
+        {chatIdParam != null && canTag != null && (
+          <GlassCard className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold text-sm">Тег в чате</p>
+              <p className="text-white/40 text-xs">Упоминание ссылкой в сообщениях бота</p>
+            </div>
+            <NeonButton size="sm" variant={canTag ? "pink" : "green"} disabled={tagBusy} onClick={onToggleTag}>
+              {tagBusy ? "…" : canTag ? "Выключить" : "Включить"}
+            </NeonButton>
+          </GlassCard>
+        )}
+        <NeonButton className="w-full" variant="purple" onClick={() => (window.location.href = "/webapp/?page=mychats")}>
+          Мои чаты
+        </NeonButton>
+        <NeonButton className="w-full" variant="cyan" onClick={() => (window.location.href = "/webapp/?page=subscribe")}>
+          Подписка / донат
+        </NeonButton>
+      </motion.div>
     </div>
   );
 }

@@ -45,7 +45,10 @@ export type PageName =
   | "casino"
   | "advertise"
   | "admin"
-  | "payment";
+  | "mychats"
+  | "subscribe"
+  | "payment_success"
+  | "payment_fail";
 
 export interface UrlParams {
   page: PageName;
@@ -71,8 +74,14 @@ export function getCurrentUserId(): number | null {
 
 export function getUrlParams(): UrlParams {
   const u = new URLSearchParams(window.location.search);
+  let page = (u.get("page") as PageName) || "profile";
+  // Legacy return URLs: ?page=payment&status=success|fail
+  if ((page as string) === "payment") {
+    const st = (u.get("status") || "").toLowerCase();
+    page = st === "fail" || st === "error" ? "payment_fail" : "payment_success";
+  }
   return {
-    page: (u.get("page") as PageName) || "profile",
+    page,
     chat_id: u.get("chat_id"),
     request_func: u.get("request_func"),
     game: u.get("game"),
@@ -98,8 +107,16 @@ export function initTelegram() {
 
 export function applyTheme() {
   const tg = getTelegramWebApp();
-  const scheme = tg?.colorScheme ?? "dark";
   const html = document.documentElement;
+  const params = new URLSearchParams(window.location.search);
+  const page = params.get("page") || "";
+  const forceDark =
+    page === "payment" ||
+    page === "payment_success" ||
+    page === "payment_fail" ||
+    page === "subscribe" ||
+    page === "roulette";
+  const scheme = forceDark ? "dark" : (tg?.colorScheme ?? "dark");
   if (scheme === "light") {
     html.classList.remove("dark");
     html.classList.add("light");
@@ -147,21 +164,30 @@ export function isTelegramOnlyPage(page: PageName, params: UrlParams): boolean {
   return Boolean(params.room || params.game);
 }
 
-
-/** Close Mini App or fall back to history / profile. */
-export function goBack() {
+/** Back: history if possible, else profile page, else close WebApp. */
+export function goBackOrClose(fallback: string = "/webapp/?page=profile") {
   try {
-    const wa = getTelegramWebApp();
-    if (wa?.close) {
-      wa.close();
+    if (window.history.length > 1) {
+      window.history.back();
       return;
     }
   } catch {
     // ignore
   }
-  if (window.history.length > 1) {
-    window.history.back();
+  try {
+    window.location.assign(fallback);
     return;
+  } catch {
+    // ignore
   }
-  window.location.href = "/webapp/?page=profile";
+  try {
+    getTelegramWebApp()?.close();
+  } catch {
+    // ignore
+  }
+}
+
+/** True when running inside Telegram WebApp with initData. */
+export function hasTelegramInitData(): boolean {
+  return Boolean(getInitData());
 }

@@ -138,6 +138,37 @@ class SubscriptionOrm(Base):
             await session.commit()
             return sub
 
+
+    @staticmethod
+    async def force_cancel(sub_id: int) -> "SubscriptionOrm | None":
+        """Немедленно отменить подписку (admin): status=CANCELLED, auto_renew=False, clear recurring."""
+        async with async_session_factory() as session:
+            sub = await session.get(SubscriptionOrm, sub_id)
+            if sub is None:
+                return None
+            sub.status = SubscriptionStatus.CANCELLED
+            sub.auto_renew = False
+            sub.recurring_key = None
+            await session.commit()
+            await session.refresh(sub)
+            return sub
+
+    @staticmethod
+    async def list_active(limit: int = 200) -> list["SubscriptionOrm"]:
+        """Активные (не истёкшие) подписки для админки."""
+        now = datetime.now()
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(SubscriptionOrm)
+                .filter(
+                    SubscriptionOrm.status == SubscriptionStatus.ACTIVE,
+                    SubscriptionOrm.expires_at > now,
+                )
+                .order_by(SubscriptionOrm.expires_at.asc())
+                .limit(limit)
+            )
+            return list(result.scalars().all())
+
     @staticmethod
     async def cancel_auto_renew(user_id: int) -> bool:
         """Отмена автопродления (текущий период доигрывается до конца)."""

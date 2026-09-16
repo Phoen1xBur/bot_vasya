@@ -31,37 +31,33 @@ async def create_room(body: dict = Body(...), profile: dict = Depends(require_te
     except ValueError:
         raise HTTPException(status_code=400, detail="Неверный тип игры")
 
-    chat_id = int(body.get("chat_id") or 0)
-    # Solo games from Main App menu have no group chat_id — use user_id
-    if chat_id == 0:
-        chat_id = int(profile["id"])
-        logger.info("create_room: solo fallback chat_id=user_id=%s type=%s", chat_id, game_type_str)
+    chat_id = int(body.get("chat_id", 0))
+    if not chat_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Не указан chat_id — откройте игру из группового чата (кнопка мини-игр)",
+        )
 
     bet = int(body.get("bet", 0))
     target_id = body.get("target_id")
 
-    # Активная комната: ту же игру переиспользуем; слоты/рулетку другого типа закрываем
+    # Проверка, что нет активной комнаты (для рулетки — вернём существующую в том же чате)
     existing = await GameRoomOrm.get_active_for_user(profile["id"])
     if existing:
-        same_type = existing.game_type == game_type
-        if same_type:
-            logger.info(
-                "create_room: reuse active room=%s type=%s user=%s",
-                existing.id, game_type_str, profile["id"],
-            )
+        if (
+            game_type == GameType.ROULETTE
+            and existing.game_type == GameType.ROULETTE
+            and int(existing.chat_id) == int(chat_id)
+        ):
             return await game_service.get_room_state_view(existing)
-        if existing.game_type in (GameType.SLOTS, GameType.ROULETTE):
-            await GameRoomOrm.update(str(existing.id), status=GameRoomStatus.CANCELLED)
-            logger.info(
-                "create_room: cancelled stale %s room=%s for user=%s",
-                existing.game_type, existing.id, profile["id"],
-            )
-        else:
-            raise HTTPException(status_code=409, detail="У вас уже есть активная игра")
+        raise HTTPException(status_code=409, detail="У вас уже есть активная игра")
 
     # Для TTT нужен target_id
     if game_type == GameType.TTT and not target_id:
-        raise HTTPException(status_code=400, detail="Для дуэли укажите target_id")
+        raise HTTPException(
+            status_code=400,
+            detail="Для дуэли выберите соперника (target_id) до создания комнаты",
+        )
 
     # Списываем ставку сразу (если есть)
     if bet > 0:
@@ -102,10 +98,6 @@ async def get_room(room_id: str, profile: dict = Depends(require_telegram_user))
     room = await GameRoomOrm.get(room_id)
     if room is None:
         raise HTTPException(status_code=404, detail="Комната не найдена")
-    if room.game_type == GameType.TTT:
-        allowed = {room.initiator_id, room.target_id} - {None}
-        if profile["id"] not in allowed:
-            raise HTTPException(status_code=403, detail="Вы не приглашены")
     # Проверка не истекла ли
     if room.status in (GameRoomStatus.WAITING, GameRoomStatus.ACTIVE):
         from datetime import datetime
@@ -132,7 +124,7 @@ async def join_room(
     if room.game_type == GameType.TTT:
         # Дуэль: принять может только target_id
         if room.target_id != user_id:
-            raise HTTPException(status_code=403, detail="Вы не приглашены")
+            raise HTTPException(status_code=403, detail="Эта дуэль не для вас")
         if room.status != GameRoomStatus.WAITING:
             raise HTTPException(status_code=400, detail="Дуэль уже начата или завершена")
         # Списываем ставку target'а

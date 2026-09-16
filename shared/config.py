@@ -89,7 +89,8 @@ class Settings(BaseSettings):
     TBANK_SUCCESS_URL: str = ""
     TBANK_FAIL_URL: str = ""
     TBANK_NOTIFICATION_URL: str = ""
-    # На серверах с корпоративным/self-signed MITM в цепочке — False
+    # SSL verify for T-Bank HTTP client. Set TBANK_SSL_VERIFY=false only for
+    # corporate MITM / broken CA chains (never as a silent default).
     TBANK_SSL_VERIFY: bool = True
 
     # --- Админы (массив Telegram user_id) ---
@@ -99,6 +100,8 @@ class Settings(BaseSettings):
     GAME_ROOM_TTL_MINUTES: int = 15
     GAME_COMMISSION_PERCENT: int = 10  # комиссия бота со ставок
     GAME_ROULETTE_MAX_PLAYERS: int = 8
+    # Минимум сообщений в истории чата перед AI/марков-ответом
+    MIN_AI_CONTEXT_MESSAGES: int = 30
 
     # --- Лимиты экономики (бесплатно) ---
     WORK_COOLDOWN_MINUTES: int = 60
@@ -153,6 +156,10 @@ class Settings(BaseSettings):
             BotCommand(command="subscribe", description="Подписка VIP/Premium/Elite"),
             BotCommand(command="donate", description="Поддержать проект"),
             BotCommand(command="advertise", description="Подать рекламу"),
+            BotCommand(command="ai_generate", description="AI-генерация (подписка)"),
+            BotCommand(command="ai_roleplay", description="AI roleplay (подписка)"),
+            BotCommand(command="casino", description="Казино WebApp"),
+            BotCommand(command="unsubscribe", description="Отключить автопродление"),
         ]
 
 

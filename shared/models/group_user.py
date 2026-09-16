@@ -96,6 +96,41 @@ class GroupUserOrm(Base):
             res = await session.execute(query)
             return int(res.scalar_one())
 
+
+    @staticmethod
+    async def get_admin_memberships(user_id: int) -> list["GroupUserOrm"]:
+        """Чаты, где пользователь owner/administrator (Вася знает о членстве)."""
+        async with async_session_factory() as session:
+            query = (
+                select(GroupUserOrm)
+                .filter(
+                    GroupUserOrm.user_id == user_id,
+                    GroupUserOrm.chat_member_status.in_(
+                        (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR)
+                    ),
+                )
+                .order_by(GroupUserOrm.telegram_chat_id.desc())
+            )
+            res = await session.execute(query)
+            return list(res.scalars().all())
+
+    @staticmethod
+    async def get_memberships(user_id: int) -> list["GroupUserOrm"]:
+        """Активные членства пользователя (не left/banned)."""
+        async with async_session_factory() as session:
+            query = (
+                select(GroupUserOrm)
+                .filter(
+                    GroupUserOrm.user_id == user_id,
+                    GroupUserOrm.chat_member_status.notin_(
+                        (ChatMemberStatus.BANNED, ChatMemberStatus.LEFT)
+                    ),
+                )
+                .order_by(GroupUserOrm.telegram_chat_id.desc())
+            )
+            res = await session.execute(query)
+            return list(res.scalars().all())
+
     @staticmethod
     async def get_groups_user_by_telegram_chat_id(tg_chat_id: int) -> list["GroupUserOrm"]:
         async with async_session_factory() as session:

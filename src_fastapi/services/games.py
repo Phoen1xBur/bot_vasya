@@ -94,93 +94,238 @@ def _number_color(n: int) -> str:
     return "red" if n in RED_NUMBERS else "black"
 
 
+def _roulette_bet_wins(btype: str, bval, number: int, color: str) -> int | None:
+    """Множитель выплаты (включая возврат ставки) или None если проигрыш.
+    European: number x36, color/parity/highlow x2, dozen/column x3.
+    """
+    if number == 0:
+        # zero: only straight-up 0 wins (and green color)
+        if btype == "number" and int(bval) == 0:
+            return 36
+        if btype == "color" and bval == "green":
+            return 2
+        return None
+
+    if btype == "number":
+        return 36 if int(bval) == number else None
+    if btype == "color":
+        return 2 if bval == color else None
+    if btype == "parity":
+        is_even = number % 2 == 0
+        if bval == "even" and is_even:
+            return 2
+        if bval == "odd" and not is_even:
+            return 2
+        return None
+    if btype == "highlow":
+        if bval in ("low", "1-18") and 1 <= number <= 18:
+            return 2
+        if bval in ("high", "19-36") and 19 <= number <= 36:
+            return 2
+        return None
+    if btype == "dozen":
+        # 1 / 2 / 3  or "1st"/"2nd"/"3rd"
+        mapping = {"1": 1, "2": 2, "3": 3, "1st": 1, "2nd": 2, "3rd": 3, 1: 1, 2: 2, 3: 3}
+        d = mapping.get(bval)
+        if d == 1 and 1 <= number <= 12:
+            return 3
+        if d == 2 and 13 <= number <= 24:
+            return 3
+        if d == 3 and 25 <= number <= 36:
+            return 3
+        return None
+    if btype == "column":
+        # columns: 1 -> 1,4,7...; 2 -> 2,5,8...; 3 -> 3,6,9...
+        mapping = {"1": 1, "2": 2, "3": 3, 1: 1, 2: 2, 3: 3}
+        c = mapping.get(bval)
+        if c and number > 0 and ((number - 1) % 3) + 1 == c:
+            return 3
+        return None
+    return None
+
+
 async def roulette_join(room: GameRoomOrm, user_id: int, bet: int) -> dict:
+    """Зарегистрировать игрока за столом (без обязательного списания — ставки списываются при place/spin)."""
     if room.status not in (GameRoomStatus.WAITING, GameRoomStatus.ACTIVE):
         raise ValueError("Комната недоступна")
 
-    state = room.state or {}
-    players: list[dict] = state.get("players", [])
+    state = dict(room.state or {})
+    players: list[dict] = list(state.get("players", []))
 
-    if len(players) >= _settings.GAME_ROULETTE_MAX_PLAYERS:
-        raise ValueError("Достигнут максимум игроков")
+    if not any(p.get("user_id") == user_id for p in players):
+        if len(players) >= _settings.GAME_ROULETTE_MAX_PLAYERS:
+            raise ValueError("Достигнут максимум игроков")
+        players.append({"user_id": user_id, "bet": 0})
 
-    # Проверка баланса
-    ok = await _charge_bet(room.chat_id, user_id, bet)
+    # Опциональный депозит фишек на стол (совместимость со старым клиентом)
+    charged = 0
+    if bet > 0:
+        ok = await _charge_bet(room.chat_id, user_id, bet)
+        if not ok:
+            raise ValueError("Недостаточно васякоинов для ставки")
+        charged = bet
+        for p in players:
+            if p.get("user_id") == user_id:
+                p["bet"] = int(p.get("bet", 0)) + bet
+                break
+
+    state["players"] = players
+    new_status = GameRoomStatus.ACTIVE if room.status == GameRoomStatus.WAITING else room.status
+    await GameRoomOrm.update(str(room.id), state=state, status=new_status)
+    return {"joined": True, "players_count": len(players), "bet": charged, "status": new_status.value}
+
+
+async def roulette_place_bets(room: GameRoomOrm, user_id: int, bets: list[dict]) -> dict:
+    """Поставить фишки: списать баланс и сохранить ставки в state.pending_bets."""
+    if room.status not in (GameRoomStatus.WAITING, GameRoomStatus.ACTIVE):
+        raise ValueError("Комната недоступна")
+    if room.status == GameRoomStatus.FINISHED:
+        raise ValueError("Раунд завершён — создайте новую игру")
+
+    state = dict(room.state or {})
+    players: list[dict] = list(state.get("players", []))
+    if not any(p.get("user_id") == user_id for p in players):
+        if len(players) >= _settings.GAME_ROULETTE_MAX_PLAYERS:
+            raise ValueError("Достигнут максимум игроков")
+        players.append({"user_id": user_id, "bet": 0})
+
+    pending: list[dict] = list(state.get("pending_bets", []))
+    # Уберём предыдущие неразыгранные ставки этого игрока и вернём деньги? —
+    # проще: добавляем к pending, списывая каждую новую.
+    normalized: list[dict] = []
+    total = 0
+    for raw in bets or []:
+        amount = int(raw.get("amount", 0))
+        if amount <= 0:
+            continue
+        btype = str(raw.get("type", ""))
+        bval = raw.get("value")
+        if btype not in ("number", "color", "parity", "highlow", "dozen", "column"):
+            raise ValueError(f"Неизвестный тип ставки: {btype}")
+        total += amount
+        normalized.append({
+            "user_id": user_id,
+            "type": btype,
+            "value": bval,
+            "amount": amount,
+        })
+
+    if total <= 0:
+        raise ValueError("Добавьте хотя бы одну ставку")
+
+    ok = await _charge_bet(room.chat_id, user_id, total)
     if not ok:
         raise ValueError("Недостаточно васякоинов для ставки")
 
-    # Если игрок уже в игре — обновляем ставку
-    found = False
+    pending.extend(normalized)
     for p in players:
-        if p["user_id"] == user_id:
-            p["bet"] += bet
-            found = True
+        if p.get("user_id") == user_id:
+            p["bet"] = int(p.get("bet", 0)) + total
             break
-    if not found:
-        players.append({"user_id": user_id, "bet": bet})
 
     state["players"] = players
-    if room.status == GameRoomStatus.WAITING:
-        await GameRoomOrm.update(str(room.id), state=state, status=GameRoomStatus.ACTIVE)
-    else:
-        await GameRoomOrm.update(str(room.id), state=state)
-    return {"joined": True, "players_count": len(players), "bet": bet}
+    state["pending_bets"] = pending
+    await GameRoomOrm.update(str(room.id), state=state, status=GameRoomStatus.ACTIVE)
+    return {
+        "ok": True,
+        "charged": total,
+        "pending_bets": [b for b in pending if b.get("user_id") == user_id],
+        "pending_total": sum(int(b.get("amount", 0)) for b in pending if b.get("user_id") == user_id),
+    }
 
 
 async def roulette_spin(room: GameRoomOrm, user_id: int, action: dict) -> dict:
-    """Крутить рулетку. action: {"bets": [{"user_id","type","value","amount"}]}
+    """Крутить рулетку.
 
-    Упрощённая модель: каждый игрок ставит на цвет/число/чёт-нечет.
+    action:
+      - bets: optional list — если переданы, сначала place (списание), затем спин
+      - иначе берутся state.pending_bets
+
+    После спина стол остаётся ACTIVE (новый раунд), pending очищается.
+    Крутить может любой участник стола (не только initiator) — для соло-казино.
     """
-    if room.status != GameRoomStatus.ACTIVE:
-        raise ValueError("Рулетка не активна")
-    # Крутить может инициатор
-    if user_id != room.initiator_id:
-        raise ValueError("Крутить может только создатель стола")
+    if room.status == GameRoomStatus.FINISHED:
+        raise ValueError("Стол закрыт — создайте новую игру")
+    if room.status not in (GameRoomStatus.WAITING, GameRoomStatus.ACTIVE):
+        raise ValueError("Рулетка недоступна")
 
-    state = room.state or {}
-    incoming = action.get("bets", [])
-    # Нормализуем ставки и пишем в state (видно другим игрокам)
-    normalized = []
-    for bet in incoming:
-        normalized.append({
-            "user_id": bet.get("user_id") or user_id,
-            "type": bet.get("type"),
-            "value": bet.get("value"),
-            "amount": int(bet.get("amount", 0)),
-        })
-    if normalized:
-        state["bets"] = (state.get("bets") or []) + normalized
-        await GameRoomOrm.update(str(room.id), state=state)
-    bets: list[dict] = state.get("bets") or normalized
+    state = dict(room.state or {})
+    players: list[dict] = list(state.get("players", []))
+
+    # Авто-join крутящего (persist), чтобы place/spin видели участника
+    if not any(p.get("user_id") == user_id for p in players):
+        if len(players) >= _settings.GAME_ROULETTE_MAX_PLAYERS:
+            raise ValueError("Достигнут максимум игроков")
+        players.append({"user_id": user_id, "bet": 0})
+        state["players"] = players
+        await GameRoomOrm.update(str(room.id), state=state, status=GameRoomStatus.ACTIVE)
+        room = await GameRoomOrm.get(str(room.id))
+        state = dict(room.state or {})
+
+    incoming = action.get("bets")
+    if incoming:
+        await roulette_place_bets(room, user_id, incoming)
+        room = await GameRoomOrm.get(str(room.id))
+        state = dict(room.state or {})
+
+    bets: list[dict] = list(state.get("pending_bets") or [])
+    if not bets:
+        raise ValueError("Нет ставок на столе — сделайте ставку")
+
     number = random.choice(ROULETTE_NUMBERS)
     color = _number_color(number)
 
-    # Выплаты
     payouts: list[dict] = []
+    # агрегируем по user_id
+    by_user: dict[int, dict] = {}
     for bet in bets:
-        uid = bet.get("user_id") or user_id
-        btype = bet.get("type")
-        bval = bet.get("value")
+        uid = int(bet.get("user_id") or user_id)
         amount = int(bet.get("amount", 0))
-        won = 0
-        if btype == "number" and int(bval) == number:
-            won = amount * 36
-        elif btype == "color" and bval == color:
-            won = amount * 2
-        elif btype == "parity":
-            is_even = number % 2 == 0
-            if (bval == "even" and is_even) or (bval == "odd" and not is_even):
-                won = amount * 2
-        payouts.append({"user_id": uid, "bet": amount, "won": won, "won_net": won - amount})
+        mult = _roulette_bet_wins(str(bet.get("type")), bet.get("value"), number, color)
+        won = amount * mult if mult else 0
+        slot = by_user.setdefault(uid, {"user_id": uid, "bet": 0, "won": 0})
+        slot["bet"] += amount
+        slot["won"] += won
+        payouts.append({
+            "user_id": uid,
+            "type": bet.get("type"),
+            "value": bet.get("value"),
+            "bet": amount,
+            "won": won,
+            "won_net": won - amount,
+        })
 
-    # Выплата выигрышей
-    for p in payouts:
-        if p["won"] > 0:
-            await _payout(room.chat_id, p["user_id"], p["won"])
+    results = []
+    for uid, agg in by_user.items():
+        won = int(agg["won"])
+        bet_sum = int(agg["bet"])
+        if won > 0:
+            await _payout(room.chat_id, uid, won)
+        results.append({
+            "user_id": uid,
+            "bet": bet_sum,
+            "won": won,
+            "won_net": won - bet_sum,
+        })
 
-    await _finish_game(room, winner_id=0)
-    return {"number": number, "color": color, "results": payouts}
+    history = list(state.get("history", []))
+    history.append({"number": number, "color": color, "results": results})
+    state["history"] = history[-30:]
+    state["last_number"] = number
+    state["last_color"] = color
+    state["pending_bets"] = []
+    # сброс «банка» игроков на столе после раунда
+    for p in state.get("players", []):
+        p["bet"] = 0
+
+    await GameRoomOrm.update(str(room.id), state=state, status=GameRoomStatus.ACTIVE)
+    return {
+        "number": number,
+        "color": color,
+        "results": results,
+        "bets": payouts,
+        "status": "active",
+    }
 
 
 # ---------------- Слот-машина ----------------

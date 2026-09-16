@@ -145,20 +145,13 @@ async def list_campaigns_admin(
 async def list_payments(
     limit: int = 50, profile: dict = Depends(require_admin_user)
 ):
-    """Последние платежи (без неоплаченных NEW/PENDING)."""
+    """Последние платежи."""
     from sqlalchemy import select
     from shared.database import async_session_factory
 
     async with async_session_factory() as session:
         result = await session.execute(
-            select(PaymentOrm)
-            .where(
-                PaymentOrm.status.notin_(
-                    [PaymentStatus.NEW, PaymentStatus.PENDING]
-                )
-            )
-            .order_by(PaymentOrm.created_at.desc())
-            .limit(limit)
+            select(PaymentOrm).order_by(PaymentOrm.created_at.desc()).limit(limit)
         )
         payments = result.scalars().all()
     return {
@@ -185,3 +178,130 @@ async def list_admins(profile: dict = Depends(require_admin_user)):
         "you": profile["id"],
         "is_admin": profile["id"] in _settings.ADMIN_ID_SET,
     }
+
+
+@router.get("/subscriptions")
+async def list_active_subscriptions(
+    limit: int = 200, profile: dict = Depends(require_admin_user)
+):
+    """Активные платные подписки (VIP/Premium/Elite)."""
+    from shared.models.user import UserOrm
+
+    subs = await SubscriptionOrm.list_active(limit=limit)
+    out = []
+    for s in subs:
+        if s.tier == SubscriptionTier.FREE:
+            continue
+        user = await UserOrm.get_user_by_id(s.user_id)
+        payment = await PaymentOrm.get_last_confirmed_subscription(s.user_id)
+        out.append(
+            {
+                "id": s.id,
+                "user_id": s.user_id,
+                "username": user.username if user else None,
+                "first_name": user.first_name if user else None,
+                "tier": s.tier.value if hasattr(s.tier, "value") else str(s.tier),
+                "status": s.status.value if hasattr(s.status, "value") else str(s.status),
+                "auto_renew": bool(s.auto_renew),
+                "has_recurring_key": bool(s.recurring_key),
+                "started_at": s.started_at.isoformat() if s.started_at else None,
+                "expires_at": s.expires_at.isoformat() if s.expires_at else None,
+                "payment": (
+                    {
+                        "order_id": payment.order_id,
+                        "payment_id": payment.payment_id,
+                        "amount": payment.amount,
+                        "status": payment.status.value if hasattr(payment.status, "value") else str(payment.status),
+                        "created_at": payment.created_at.isoformat() if payment.created_at else None,
+                    }
+                    if payment
+                    else None
+                ),
+            }
+        )
+    return {"subscriptions": out}
+
+
+@router.post("/subscriptions/{sub_id}/cancel_refund")
+async def cancel_and_refund_subscription(
+    sub_id: int,
+    body: dict = Body(default=None),
+    profile: dict = Depends(require_admin_user),
+):
+    """Отменить подписку + автопродление и вернуть деньги по последнему платежу (идемпотентно)."""
+    from shared.enums import PaymentStatus as PS
+    from shared.payments import refund_payment
+    from shared.logger import get_payment_logger
+
+    pay_log = get_payment_logger()
+    body = body or {}
+    confirm = bool(body.get("confirm"))
+    if not confirm:
+        raise HTTPException(status_code=400, detail="Требуется confirm=true")
+
+    from shared.database import async_session_factory
+    from sqlalchemy import select
+
+    async with async_session_factory() as session:
+        result = await session.execute(select(SubscriptionOrm).filter(SubscriptionOrm.id == sub_id))
+        sub = result.scalars().first()
+    if sub is None:
+        raise HTTPException(status_code=404, detail="Подписка не найдена")
+
+    # Идемпотентность: уже отменена
+    already_cancelled = (
+        (sub.status.value if hasattr(sub.status, "value") else str(sub.status)) == "cancelled"
+    )
+
+    payment = await PaymentOrm.get_last_confirmed_subscription(sub.user_id)
+    refund_result = None
+    refund_skipped = None
+
+    if payment is None:
+        refund_skipped = "no_confirmed_payment"
+    elif not payment.payment_id:
+        refund_skipped = "no_payment_id"
+    elif (payment.status.value if hasattr(payment.status, "value") else str(payment.status)) == "REFUNDED":
+        refund_skipped = "already_refunded"
+    else:
+        try:
+            refund_result = await refund_payment(payment.payment_id, payment.amount)
+            if refund_result.get("success"):
+                await PaymentOrm.update_status(payment.order_id, PS.REFUNDED, payment.payment_id)
+            else:
+                pay_log.warning(
+                    "Admin refund failed sub=%s payment_id=%s raw=%s",
+                    sub_id,
+                    payment.payment_id,
+                    refund_result.get("raw"),
+                )
+        except Exception as e:
+            pay_log.exception("Admin refund error sub=%s", sub_id)
+            raise HTTPException(status_code=502, detail=f"Ошибка возврата Т-Банк: {e}")
+
+    if not already_cancelled:
+        sub = await SubscriptionOrm.force_cancel(sub_id)
+    else:
+        # всё равно сбросим auto_renew/recurring
+        sub = await SubscriptionOrm.force_cancel(sub_id)
+
+    logger.info(
+        "Admin %s cancel_refund sub=%s user=%s refund_skipped=%s refund_ok=%s",
+        profile["id"],
+        sub_id,
+        sub.user_id if sub else None,
+        refund_skipped,
+        (refund_result or {}).get("success"),
+    )
+
+    return {
+        "ok": True,
+        "subscription_id": sub_id,
+        "status": sub.status.value if sub and hasattr(sub.status, "value") else "cancelled",
+        "auto_renew": False,
+        "refund": refund_result,
+        "refund_skipped": refund_skipped,
+        "payment_order_id": payment.order_id if payment else None,
+        "idempotent": already_cancelled and refund_skipped in ("already_refunded", "no_confirmed_payment", "no_payment_id"),
+    }
+

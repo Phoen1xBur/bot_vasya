@@ -76,6 +76,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def webapp_cache_headers(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/webapp/assets/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif path.startswith("/webapp/") and path.endswith((".js", ".css", ".woff2", ".png", ".svg")):
+        response.headers.setdefault("Cache-Control", "public, max-age=86400")
+    elif path.startswith("/webapp/"):
+        response.headers.setdefault("Cache-Control", "no-cache")
+    return response
+
 # Статика WebApp
 webapp_dir = Path(__file__).parent / "webapp"
 static_dir = webapp_dir / "static" / "dist"
@@ -89,13 +102,14 @@ else:
 
 
 def register_routers() -> None:
-    from src_fastapi.routes import payments, subscriptions, games, ads, user, admin
+    from src_fastapi.routes import payments, subscriptions, games, ads, user, admin, chats
 
     app.include_router(payments.router)
     app.include_router(subscriptions.router)
     app.include_router(games.router)
     app.include_router(ads.router)
     app.include_router(user.router)
+app.include_router(chats.router)
     app.include_router(admin.router)
     logger.info("API роутеры зарегистрированы")
 

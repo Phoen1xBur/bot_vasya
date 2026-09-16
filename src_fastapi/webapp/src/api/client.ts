@@ -98,10 +98,6 @@ export const api = {
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "POST", body }),
   // ---- User ----
-  getBalance: (chatId?: number | null) =>
-    api.get<{ money: number; vasya_coin: string; chat_id: number }>(
-      `/api/user/balance${chatId ? `?chat_id=${chatId}` : ""}`
-    ),
   getProfile: (chatId?: number | null) =>
     api.get<import("../types").UserProfile>("/api/user/profile", {
       chat_id: chatId ?? undefined,
@@ -140,6 +136,39 @@ export const api = {
     api.post<{ ok: boolean }>("/api/admin/prices", body),
   getPayments: (limit = 50) =>
     api.get<{ payments: import("../types").Payment[] }>("/api/admin/payments", { limit }),
+
+  getUserSettings: (chatId: number) =>
+    api.get<{ chat_id: number; can_tag: boolean; money: number; member_status: string }>(
+      "/api/user/settings",
+      { chat_id: chatId }
+    ),
+  toggleTag: (chatId: number) =>
+    api.post<{ chat_id: number; can_tag: boolean; ok: boolean }>("/api/user/settings/toggle_tag", {
+      chat_id: chatId,
+    }),
+  getMyChats: () =>
+    api.get<{ chats: Array<{
+      chat_id: number;
+      answer_chance: number;
+      ai_generate_text: boolean;
+      member_status: string;
+      can_tag: boolean;
+      money: number;
+    }> }>("/api/chats/mine"),
+  patchChatSettings: (chatId: number, body: { answer_chance?: number; ai_generate_text?: boolean }) =>
+    request<{ chat_id: number; answer_chance: number; ai_generate_text: boolean; ok: boolean }>(
+      `/api/chats/${chatId}/settings`,
+      { method: "PATCH", body }
+    ),
+  initPayment: (body: Record<string, unknown>) =>
+    api.post<{ order_id: string; payment_url: string; amount: number }>("/api/payments/init", body),
+  getAdminSubscriptions: () =>
+    api.get<{ subscriptions: import("../types").AdminSubscription[] }>("/api/admin/subscriptions"),
+  cancelRefundSubscription: (subId: number) =>
+    api.post<{ ok: boolean; refund_skipped?: string | null }>(
+      `/api/admin/subscriptions/${subId}/cancel_refund`,
+      { confirm: true }
+    ),
   getAdminCampaigns: () =>
     api.get<{ campaigns: import("../types").AdCampaign[] }>("/api/admin/campaigns"),
 };

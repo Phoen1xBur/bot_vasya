@@ -111,3 +111,33 @@ export interface Payment {
   fulfilled: boolean;
   created_at: string | null;
 }
+
+
+export interface AdminSubscription {
+  id: number;
+  user_id: number;
+  username: string | null;
+  first_name: string | null;
+  tier: string;
+  status: string;
+  auto_renew: boolean;
+  has_recurring_key: boolean;
+  started_at: string | null;
+  expires_at: string | null;
+  payment: {
+    order_id: string;
+    payment_id: string | null;
+    amount: number;
+    status: string;
+    created_at: string | null;
+  } | null;
+}
+
+export interface AdminChat {
+  chat_id: number;
+  answer_chance: number;
+  ai_generate_text: boolean;
+  member_status: string;
+  can_tag: boolean;
+  money: number;
+}
