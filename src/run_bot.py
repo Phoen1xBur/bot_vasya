@@ -21,7 +21,12 @@ except RuntimeError:
 from aiogram import Bot, Dispatcher
 from pyrogram import Client
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+_ROOT = Path(__file__).resolve().parent.parent
+_SRC = Path(__file__).resolve().parent
+for _p in (_SRC, _ROOT):
+    s = str(_p)
+    if s not in sys.path:
+        sys.path.insert(0, s)
 
 from shared.bot_identity import init_bot_identity  # noqa: E402
 from shared.config import get_settings  # noqa: E402
