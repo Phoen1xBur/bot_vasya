@@ -42,10 +42,17 @@ bot = Bot(token=settings.TOKEN)
 dp = Dispatcher()
 
 # Имя сессии Pyrogram — это идентификатор файла, а не @username бота.
+# bot_token: старт без интерактивного ainput (phone/bot token).
+_api_id = settings.API_ID
+try:
+    _api_id = int(_api_id) if _api_id not in (None, "") else 0
+except (TypeError, ValueError):
+    _api_id = 0
 app = Client(
     "vasya_session",
-    settings.API_ID,
-    settings.API_HASH,
+    api_id=_api_id,
+    api_hash=settings.API_HASH or "",
+    bot_token=settings.TOKEN,
 )
 
 from utils.auto_delete_message_service import AutoDeleteService  # noqa: E402

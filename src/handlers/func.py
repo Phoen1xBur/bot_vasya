@@ -43,13 +43,38 @@ logger = logging.getLogger(__name__)
 MEMBER_TYPE_ADMIN = (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR)
 
 
-async def get_group_user(message: Message) -> GroupUserOrm:
-    group_user = await GroupUserOrm.get_group_user(message.from_user.id, message.chat.id)
-    if not group_user:
-        await TelegramChatOrm.insert_or_update_telegram_chat(message.chat.id)
-        await update_users(message)
-        return await GroupUserOrm.get_group_user(message.from_user.id, message.chat.id)
+
+async def ensure_group_user_from_message(message: Message) -> GroupUserOrm:
+    """Создать/обновить User + GroupUser из aiogram Message без Pyrogram."""
+    tg_user = message.from_user
+    if tg_user is None:
+        raise ValueError("message.from_user is required")
+    await TelegramChatOrm.insert_or_update_telegram_chat(message.chat.id)
+    await UserOrm.insert_or_update_user(tg_user.id, tg_user)
+    await GroupUserOrm.insert_or_update_group_user(tg_user.id, message.chat.id)
+    group_user = await GroupUserOrm.get_group_user(tg_user.id, message.chat.id)
+    if group_user is None:
+        raise RuntimeError(f"Failed to upsert GroupUser user={tg_user.id} chat={message.chat.id}")
     return group_user
+
+
+async def get_group_user(message: Message) -> GroupUserOrm:
+    """Вернуть GroupUser; при отсутствии — upsert из aiogram, Pyrogram не блокирует ответ."""
+    group_user = await GroupUserOrm.get_group_user(message.from_user.id, message.chat.id)
+    if group_user:
+        return group_user
+
+    group_user = await ensure_group_user_from_message(message)
+    try:
+        await update_users(message)
+    except Exception:
+        logger.warning(
+            "update_users failed after upsert (chat=%s user=%s); continuing",
+            message.chat.id,
+            message.from_user.id,
+            exc_info=True,
+        )
+    return await GroupUserOrm.get_group_user(message.from_user.id, message.chat.id) or group_user
 
 
 async def update_users(event: ChatMemberUpdated | Message) -> None:
