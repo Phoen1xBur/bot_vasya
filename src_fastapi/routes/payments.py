@@ -17,7 +17,8 @@ from shared.enums import PaymentStatus, PaymentType, SubscriptionTier
 from shared.logger import get_payment_logger
 from shared.models.donation import DonationOrm
 from shared.models.payment import PaymentOrm
-from shared.models.subscription import SubscriptionOrm, TIER_PRICES_KOPECKS
+from shared.models.subscription import SubscriptionOrm
+from shared.prices import get_tier_price_kopecks
 from shared.payments import create_payment, get_payment_status, is_payment_successful, verify_webhook_token
 from src_fastapi.deps import require_telegram_user
 
@@ -54,7 +55,7 @@ async def init_payment(profile: dict = Depends(require_telegram_user), body: dic
             tier = SubscriptionTier(tier_str)
         except ValueError:
             raise HTTPException(status_code=400, detail="Неверный уровень подписки")
-        amount = TIER_PRICES_KOPECKS.get(tier)
+        amount = get_tier_price_kopecks(tier)
         if amount is None:
             raise HTTPException(status_code=400, detail="Нельзя купить FREE")
         order_id = _make_order_id("sub", user_id)

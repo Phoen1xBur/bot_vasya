@@ -7,6 +7,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from shared.ad_rules import AD_RULES
 from shared.ad_targeting import count_total_unique_users, select_chats_for_target
 from shared.ai import ai_check_ad
+from shared.prices import get_ad_price_per_1000_kopecks, is_ad_ai_check_enabled
 from shared.config import get_settings
 from shared.enums import AdCampaignStatus
 from shared.models.ad_campaign import AdCampaignOrm
@@ -45,7 +46,7 @@ async def submit_campaign(
         raise HTTPException(status_code=400, detail="Необходимо согласие с правилами")
 
     # Цена: 1000₽ за 1000 у.п. (по умолчанию, настраивается в админке)
-    price_per_1000 = 1000_00  # копеек
+    price_per_1000 = get_ad_price_per_1000_kopecks()  # копеек
     price = (target // 1000) * price_per_1000
     if target % 1000:
         price += price_per_1000
@@ -61,13 +62,20 @@ async def submit_campaign(
     )
 
     # AI-проверка (если включена — по умолчанию включена)
-    ai_enabled = True  # можно вынести в настройки админки
-    if ai_enabled:
+    if is_ad_ai_check_enabled():
         verdict = await ai_check_ad(text, AD_RULES)
         await AdCampaignOrm.update(
             campaign.id,
             ai_verdict=verdict,
             status=AdCampaignStatus.AI_APPROVED if verdict.get("approved") else AdCampaignStatus.AI_REJECTED,
+        )
+        campaign = await AdCampaignOrm.get_by_id(campaign.id)
+    else:
+        verdict = {"ok": True, "skipped": True, "approved": True}
+        await AdCampaignOrm.update(
+            campaign.id,
+            ai_verdict=verdict,
+            status=AdCampaignStatus.AI_APPROVED,
         )
         campaign = await AdCampaignOrm.get_by_id(campaign.id)
 

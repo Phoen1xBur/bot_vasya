@@ -16,9 +16,9 @@ from shared.models.donation import DonationOrm
 from shared.models.payment import PaymentOrm
 from shared.models.subscription import (
     SubscriptionOrm,
-    TIER_PRICES_KOPECKS,
 )
 from shared.redis_client import get_redis
+from shared.prices import PRICE_KEYS
 from src_fastapi.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
@@ -26,14 +26,6 @@ _settings = get_settings()
 
 router = APIRouter(prefix="/api/admin", tags=["Админ-панель"])
 
-# Кэш цен в Redis (настраиваемые)
-PRICE_KEYS = {
-    "sub_vip": "price:sub:vip",
-    "sub_premium": "price:sub:premium",
-    "sub_elite": "price:sub:elite",
-    "ad_per_1000": "price:ad:per_1000",
-    "ai_check_enabled": "config:ad:ai_check",
-}
 
 
 @router.get("/stats")
@@ -82,23 +74,10 @@ async def get_stats(profile: dict = Depends(require_admin_user)):
 
 @router.get("/prices")
 async def get_prices(profile: dict = Depends(require_admin_user)):
-    """Текущие цены."""
-    r = get_redis()
-    defaults = {
-        "sub_vip": TIER_PRICES_KOPECKS[SubscriptionTier.VIP],
-        "sub_premium": TIER_PRICES_KOPECKS[SubscriptionTier.PREMIUM],
-        "sub_elite": TIER_PRICES_KOPECKS[SubscriptionTier.ELITE],
-        "ad_per_1000": 1000_00,
-        "ai_check_enabled": "true",
-    }
-    result = {}
-    for key, redis_key in PRICE_KEYS.items():
-        try:
-            val = r.get(redis_key)
-            result[key] = val if val is not None else defaults[key]
-        except Exception:
-            result[key] = defaults[key]
-    return result
+    """Текущие цены (Redis с fallback на дефолты)."""
+    from shared.prices import get_admin_prices_snapshot
+
+    return get_admin_prices_snapshot()
 
 
 @router.post("/prices")

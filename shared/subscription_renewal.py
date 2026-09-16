@@ -9,7 +9,8 @@ from typing import Any
 from shared.enums import PaymentStatus, PaymentType, SubscriptionTier
 from shared.logger import get_payment_logger
 from shared.models.payment import PaymentOrm
-from shared.models.subscription import SubscriptionOrm, TIER_PRICES_KOPECKS
+from shared.models.subscription import SubscriptionOrm
+from shared.prices import get_tier_price_kopecks
 from shared.payments import charge_recurring, is_payment_successful
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ async def process_subscription_renewals() -> dict[str, int]:
                 sub.user_id,
             )
             continue
-        amount = TIER_PRICES_KOPECKS.get(sub.tier)
+        amount = get_tier_price_kopecks(sub.tier)
         if not amount:
             stats["skipped"] += 1
             continue

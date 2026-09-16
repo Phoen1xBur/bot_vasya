@@ -7,10 +7,10 @@ from shared.models.subscription import (
     TIER_AI_DAILY_LIMIT,
     TIER_FREE_JAIL_PER_DAY,
     TIER_LIMIT_MULTIPLIER,
-    TIER_PRICES_KOPECKS,
     TIER_TAG,
     TIER_WORK_BONUS,
 )
+from shared.prices import get_tier_price_kopecks
 from shared.enums import SubscriptionTier
 from src_fastapi.deps import require_telegram_user
 
@@ -48,7 +48,7 @@ async def subscription_plans():
         plans.append({
             "tier": tier.value,
             "tag": TIER_TAG.get(tier, ""),
-            "price_kopecks": TIER_PRICES_KOPECKS.get(tier, 0),
+            "price_kopecks": get_tier_price_kopecks(tier) or 0,
             "limits_multiplier": TIER_LIMIT_MULTIPLIER.get(tier, 1),
             "work_bonus": TIER_WORK_BONUS.get(tier, 0.0),
             "free_jail_per_day": TIER_FREE_JAIL_PER_DAY.get(tier, 0),
