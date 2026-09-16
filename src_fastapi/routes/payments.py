@@ -144,6 +144,8 @@ async def payment_webhook(request: Request):
     order_id = payload.get("OrderId", "")
     tb_status = payload.get("Status", "")
     payment_id = payload.get("PaymentId")
+    if payment_id is not None:
+        payment_id = str(payment_id)
 
     pay_log.info(
         "Webhook: order=%s status=%s payment_id=%s",
@@ -159,12 +161,15 @@ async def payment_webhook(request: Request):
         pay_log.warning("Платёж не найден: %s", order_id)
         return {"ok": False, "reason": "payment not found"}
 
-    # Обновляем статус
+    # Обновляем статус (не валим webhook, если апдейт статуса упал)
     try:
         new_status = PaymentStatus(tb_status)
     except ValueError:
         new_status = PaymentStatus.PENDING
-    await PaymentOrm.update_status(order_id, new_status, payment_id)
+    try:
+        await PaymentOrm.update_status(order_id, new_status, payment_id)
+    except Exception:
+        pay_log.exception("Не удалось обновить статус order=%s status=%s", order_id, tb_status)
 
     # 3. Выдача товара — только при успехе и только ОДИН РАЗ
     if is_payment_successful(tb_status):

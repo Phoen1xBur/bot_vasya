@@ -13,6 +13,7 @@ import Slots from "./pages/Slots";
 import Casino from "./pages/Casino";
 import Advertise from "./pages/Advertise";
 import Admin from "./pages/Admin";
+import PaymentResult from "./pages/PaymentResult";
 
 const pageTransition = {
   initial: { opacity: 0, scale: 0.96 },
@@ -35,7 +36,7 @@ export default function App() {
     if (tg?.colorScheme) setTheme(tg.colorScheme);
     const params = getUrlParams();
     setPage(params.page);
-    if (isTelegramOnlyPage(params.page, params) && !isInsideTelegram()) {
+    if (params.page !== "payment" && isTelegramOnlyPage(params.page, params) && !isInsideTelegram()) {
       setBlocked(true);
     }
     const timer = setTimeout(() => setLoading(false), 1500);
@@ -55,6 +56,7 @@ export default function App() {
       case "casino": return <Casino />;
       case "advertise": return <Advertise />;
       case "admin": return <Admin />;
+      case "payment": return <PaymentResult />;
       default: return <Profile />;
     }
   };

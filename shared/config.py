@@ -162,7 +162,7 @@ class Settings(BaseSettings):
         if self.TBANK_SUCCESS_URL:
             return self.TBANK_SUCCESS_URL
         base = self.WEBAPP_BASE_URL.rstrip("/")
-        return f"{base}/webapp/index.html?page=payment&status=success"
+        return f"{base}/webapp/?page=payment&status=success"
 
     @property
     def tbank_fail_url(self) -> str:
@@ -170,7 +170,7 @@ class Settings(BaseSettings):
         if self.TBANK_FAIL_URL:
             return self.TBANK_FAIL_URL
         base = self.WEBAPP_BASE_URL.rstrip("/")
-        return f"{base}/webapp/index.html?page=payment&status=fail"
+        return f"{base}/webapp/?page=payment&status=fail"
 
     @property
     def tbank_notification_url(self) -> str:

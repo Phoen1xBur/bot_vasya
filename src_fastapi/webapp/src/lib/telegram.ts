@@ -44,7 +44,8 @@ export type PageName =
   | "slots"
   | "casino"
   | "advertise"
-  | "admin";
+  | "admin"
+  | "payment";
 
 export interface UrlParams {
   page: PageName;

@@ -68,8 +68,8 @@ class PaymentOrm(Base):
             if payment is None:
                 return None
             payment.status = status
-            if payment_id:
-                payment.payment_id = payment_id
+            if payment_id is not None and str(payment_id) != "":
+                payment.payment_id = str(payment_id)
             await session.flush()
             await session.commit()
             return payment
