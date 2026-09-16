@@ -21,6 +21,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [canTag, setCanTag] = useState<boolean | null>(null);
   const [tagBusy, setTagBusy] = useState(false);
+  const [renewBusy, setRenewBusy] = useState(false);
   const chatIdParam = getUrlParams().chat_id ? parseInt(getUrlParams().chat_id!, 10) : null;
 
   useEffect(() => {
@@ -56,6 +57,37 @@ export default function Profile() {
       setTagBusy(false);
     }
   };
+
+  const onCancelAutoRenew = async () => {
+    if (renewBusy) return;
+    setRenewBusy(true);
+    setError(null);
+    try {
+      const r = await api.cancelAutoRenew();
+      if (r.subscription) setSub(r.subscription);
+      else setSub((s) => (s ? { ...s, auto_renew: false } : s));
+    } catch (e) {
+      setError(e instanceof ApiError ? formatApiDetail(e.detail) || e.message : String(e));
+    } finally {
+      setRenewBusy(false);
+    }
+  };
+
+  const onResumeAutoRenew = async () => {
+    if (renewBusy) return;
+    setRenewBusy(true);
+    setError(null);
+    try {
+      const r = await api.resumeAutoRenew();
+      if (r.subscription) setSub(r.subscription);
+      else setSub((s) => (s ? { ...s, auto_renew: true } : s));
+    } catch (e) {
+      setError(e instanceof ApiError ? formatApiDetail(e.detail) || e.message : String(e));
+    } finally {
+      setRenewBusy(false);
+    }
+  };
+
 
   if (loading) {
     return (
@@ -159,15 +191,28 @@ export default function Profile() {
           transition={{ delay: 0.3 }}
           className="w-full max-w-sm"
         >
-          <GlassCard className="text-center text-sm">
+          <GlassCard className="text-center text-sm flex flex-col gap-2">
             <p className="text-white/60">
               Подписка активна до:{" "}
               <span className="text-neon-cyan">
                 {new Date(sub.expires_at).toLocaleDateString("ru-RU")}
               </span>
             </p>
-            {sub.auto_renew && (
-              <p className="text-white/40 text-xs mt-1">Автопродление включено</p>
+            <p className="text-white/40 text-xs">
+              {sub.auto_renew
+                ? "Автопродление включено"
+                : sub.has_recurring_key
+                  ? "Автопродление выключено"
+                  : "Карта не привязана — оплатите подписку ещё раз для автопродления"}
+            </p>
+            {sub.auto_renew ? (
+              <NeonButton size="sm" variant="pink" disabled={renewBusy} onClick={onCancelAutoRenew}>
+                {renewBusy ? "…" : "Отключить автопродление"}
+              </NeonButton>
+            ) : (
+              <NeonButton size="sm" variant="green" disabled={renewBusy} onClick={onResumeAutoRenew}>
+                {renewBusy ? "…" : "Включить автопродление"}
+              </NeonButton>
             )}
           </GlassCard>
         </motion.div>

@@ -89,11 +89,16 @@ async def init_payment(profile: dict = Depends(require_telegram_user), body: dic
 
     # Создаём платёж в Т-Банке
     try:
+        # Подписка: родительский рекуррентный Init (карта → RebillId)
+        recurrent = payment_type == "subscription"
         result = await create_payment(
             amount=amount,
             order_id=order_id,
             description=description,
             extra_data={"user_id": str(user_id), "payment_type": payment_type},
+            customer_key=str(user_id) if recurrent else None,
+            recurrent=recurrent,
+            operation_initiator_type="1" if recurrent else None,
         )
     except Exception as e:
         pay_log.exception("Ошибка создания платежа %s", order_id)
@@ -193,7 +198,14 @@ async def _fulfill_payment(payment: PaymentOrm, payload: dict) -> None:
         if payment.payment_type == PaymentType.SUBSCRIPTION:
             tier_str = meta.get("tier", "vip")
             tier = SubscriptionTier(tier_str)
-            recurring = payload.get("RecurringKey") or payload.get("CardId")
+            # Т-Банк шлёт RebillId (не RecurringKey)
+            recurring = (
+                payload.get("RebillId")
+                or payload.get("RecurringKey")
+                or payload.get("CardId")
+            )
+            if recurring is not None:
+                recurring = str(recurring)
             await SubscriptionOrm.activate(
                 user_id=user_id,
                 tier=tier,

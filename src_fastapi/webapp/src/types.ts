@@ -17,6 +17,7 @@ export interface SubscriptionInfo {
   status: string;
   expires_at: string | null;
   auto_renew: boolean;
+  has_recurring_key: boolean;
   limits_multiplier: number;
   work_bonus: number;
   free_jail_per_day: number;

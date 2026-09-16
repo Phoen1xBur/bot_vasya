@@ -29,6 +29,7 @@ export default function Subscribe() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [customDonate, setCustomDonate] = useState("100");
+  const [renewBusy, setRenewBusy] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -65,7 +66,36 @@ export default function Subscribe() {
     }
   };
 
-  if (loading) {
+
+  const onCancelAutoRenew = async () => {
+    if (renewBusy) return;
+    setRenewBusy(true);
+    setError(null);
+    try {
+      const r = await api.cancelAutoRenew();
+      if (r.subscription) setSub(r.subscription);
+    } catch (e) {
+      setError(e instanceof ApiError ? formatApiDetail(e.detail) || e.message : String(e));
+    } finally {
+      setRenewBusy(false);
+    }
+  };
+
+  const onResumeAutoRenew = async () => {
+    if (renewBusy) return;
+    setRenewBusy(true);
+    setError(null);
+    try {
+      const r = await api.resumeAutoRenew();
+      if (r.subscription) setSub(r.subscription);
+    } catch (e) {
+      setError(e instanceof ApiError ? formatApiDetail(e.detail) || e.message : String(e));
+    } finally {
+      setRenewBusy(false);
+    }
+  };
+
+  if (loading)  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="w-8 h-8 border-2 border-neon-purple/30 border-t-neon-purple rounded-full animate-spin" />
@@ -105,10 +135,28 @@ export default function Subscribe() {
       </div>
 
       {sub && sub.status !== "none" && (
-        <GlassCard className="text-sm text-center">
-          Сейчас: <span className="text-neon-cyan font-bold">{sub.tag || sub.tier}</span>
-          {sub.expires_at && (
-            <> до {new Date(sub.expires_at).toLocaleDateString("ru-RU")}</>
+        <GlassCard className="text-sm text-center flex flex-col gap-2">
+          <p>
+            Сейчас: <span className="text-neon-cyan font-bold">{sub.tag || sub.tier}</span>
+            {sub.expires_at && (
+              <> до {new Date(sub.expires_at).toLocaleDateString("ru-RU")}</>
+            )}
+          </p>
+          <p className="text-white/40 text-xs">
+            {sub.auto_renew
+              ? "Автопродление включено (ежемесячное списание)"
+              : sub.has_recurring_key
+                ? "Автопродление выключено"
+                : "После оплаты карта сохранится для автопродления"}
+          </p>
+          {sub.auto_renew ? (
+            <NeonButton size="sm" variant="pink" disabled={renewBusy} onClick={onCancelAutoRenew}>
+              {renewBusy ? "…" : "Отключить автопродление"}
+            </NeonButton>
+          ) : (
+            <NeonButton size="sm" variant="green" disabled={renewBusy} onClick={onResumeAutoRenew}>
+              {renewBusy ? "…" : "Включить автопродление"}
+            </NeonButton>
           )}
         </GlassCard>
       )}
@@ -144,7 +192,7 @@ export default function Subscribe() {
             </motion.div>
           ))}
           <p className="text-white/40 text-xs text-center">
-            После оплаты статус обновится автоматически. Управление — в профиле.
+            Оплата привязывает карту: дальше списание раз в 30 дней, пока не отключите автопродление.
           </p>
         </div>
       )}

@@ -1,10 +1,12 @@
-"""Интеграция с Т-Банк (Т-Касса) через tbank-securepay.
+"""Интеграция с Т-Банком (Т-Касса) через tbank-securepay.
 
-- Создание платежа (payment_init)
-- Верификация webhook (проверка подписи Token через append_token)
-- Проверка статуса (get_state / check_order)
-- Отмена/возврат (payment_cancel)
+- Создание платежа (Init), в т.ч. родительский рекуррентный
+- Charge по RebillId
+- Верификация webhook (Token)
+- Проверка статуса / отмена / refund
 """
+
+from __future__ import annotations
 
 import logging
 from typing import Any
@@ -17,7 +19,6 @@ pay_log = get_payment_logger()
 
 _settings = get_settings()
 
-# Ленивый импорт библиотеки (может не быть при разработке без неё)
 _AsyncTKassaClient = None
 _append_token = None
 
@@ -33,30 +34,11 @@ def _import_tbank():
     return _AsyncTKassaClient, _append_token
 
 
-def _ssl_kwargs() -> dict:
-    """SSL options for T-Bank client. Prefer system CA (Docker ca-certificates).
-
-    Only disables verify when TBANK_SSL_VERIFY=false (gated env flag).
-    """
-    if _settings.TBANK_SSL_VERIFY:
-        return {}
-    import ssl
-    import logging as _logging
-    _logging.getLogger(__name__).warning(
-        "TBANK_SSL_VERIFY=false — TLS certificate verification DISABLED for T-Bank"
-    )
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    return {"ssl": ctx}
-
-
 def _make_client(AsyncTKassaClient):
     kwargs = dict(
         terminal_key=_settings.TBANK_TERMINAL_ID,
         password=_settings.TBANK_TERMINAL_PASSWORD,
     )
-    # tbank-securepay / underlying httpx may accept ssl / verify
     if not _settings.TBANK_SSL_VERIFY:
         kwargs["verify"] = False
     try:
@@ -67,20 +49,15 @@ def _make_client(AsyncTKassaClient):
 
 
 def verify_webhook_token(payload: dict[str, Any]) -> bool:
-    """Проверка подписи webhook от Т-Банка.
-
-    Т-Банк присылает POST с полями, включая Token.
-    Пересчитываем Token по тем же правилам (append_token) и сравниваем.
-    """
+    """Проверка подписи webhook от Т-Банка."""
     try:
         _, append_token = _import_tbank()
         if not _settings.TBANK_TERMINAL_PASSWORD:
-            logger.error("TBANK_TERMINAL_PASSWORD не задан — webhook не верифицируется")
+            logger.error("TBANK_TERMINAL_PASSWORD не задан — webhook не проверяется")
             return False
         received_token = payload.get("Token", "")
         if not received_token:
             return False
-        # Убираем Token, добавляем Password, считаем
         data = {k: v for k, v in payload.items() if k != "Token"}
         signed = append_token(data, _settings.TBANK_TERMINAL_PASSWORD)
         import hmac
@@ -91,74 +68,155 @@ def verify_webhook_token(payload: dict[str, Any]) -> bool:
         return False
 
 
+def _init_body(
+    *,
+    amount: int,
+    order_id: str,
+    description: str,
+    extra_data: dict[str, str] | None = None,
+    customer_key: str | None = None,
+    recurrent: bool = False,
+    operation_initiator_type: str | None = None,
+) -> dict[str, Any]:
+    """PascalCase body for /v2/Init."""
+    body: dict[str, Any] = {
+        "Amount": int(amount),
+        "OrderId": order_id,
+        "Description": description[:140],
+    }
+    if _settings.tbank_success_url:
+        body["SuccessURL"] = _settings.tbank_success_url
+    if _settings.tbank_fail_url:
+        body["FailURL"] = _settings.tbank_fail_url
+    if _settings.tbank_notification_url:
+        body["NotificationURL"] = _settings.tbank_notification_url
+    if extra_data:
+        body["DATA"] = extra_data
+    if customer_key:
+        body["CustomerKey"] = str(customer_key)
+    if recurrent:
+        body["Recurrent"] = "Y"
+        # Parent CIT card-on-file; required when Recurrent=Y for card
+        body["OperationInitiatorType"] = operation_initiator_type or "1"
+    elif operation_initiator_type:
+        body["OperationInitiatorType"] = operation_initiator_type
+    return body
+
+
 async def create_payment(
     amount: int,
     order_id: str,
     description: str,
     extra_data: dict[str, str] | None = None,
+    *,
+    customer_key: str | None = None,
+    recurrent: bool = False,
+    operation_initiator_type: str | None = None,
 ) -> dict[str, Any]:
-    """Создание платежа через Init.
+    """Создать платёж через Init (PascalCase).
 
-    :param amount: сумма в копейках
-    :param order_id: уникальный ID заказа
-    :param description: описание
-    :param extra_data: доп. поля DATA для заказа
-    :return: dict с payment_url, payment_id, success
+    Для подписки (родительский): recurrent=True, customer_key=user_id,
+    OperationInitiatorType=1 → в webhook придёт RebillId.
     """
     AsyncTKassaClient, _ = _import_tbank()
-    pay_log.info("Создание платежа order=%s amount=%s", order_id, amount)
+    pay_log.info(
+        "Создание платежа order=%s amount=%s recurrent=%s customer=%s",
+        order_id,
+        amount,
+        recurrent,
+        customer_key,
+    )
+
+    body = _init_body(
+        amount=amount,
+        order_id=order_id,
+        description=description,
+        extra_data=extra_data,
+        customer_key=customer_key,
+        recurrent=recurrent,
+        operation_initiator_type=operation_initiator_type,
+    )
 
     async with _make_client(AsyncTKassaClient) as client:
-        # Базовые параметры
-        params_data = {
-            "amount": amount,
-            "order_id": order_id,
-            "description": description,
-        }
-        if _settings.tbank_success_url:
-            params_data["SUCCESS_URL"] = _settings.tbank_success_url
-        if _settings.tbank_fail_url:
-            params_data["FAILURL"] = _settings.tbank_fail_url
-        if _settings.tbank_notification_url:
-            params_data["NotificationURL"] = _settings.tbank_notification_url
-        if extra_data:
-            params_data["DATA"] = extra_data
-
-        # Используем payment_init для плоских параметров, post — для вложенных DATA
-        from tbank_securepay import PaymentInitParams  # type: ignore
-
         try:
-            result = await client.payment_init(
-                PaymentInitParams(
-                    amount=amount,
-                    order_id=order_id,
-                    description=description,
-                )
-            )
-            # Если нужны доп. поля (URL, DATA) — делаем сырой post с подписью
-            if _settings.tbank_notification_url or extra_data or _settings.tbank_success_url:
-                raw = await client.post(
-                    "Init",
-                    params_data,
-                )
-                return {
-                    "success": raw.get("Success", False),
-                    "payment_url": raw.get("PaymentURL"),
-                    "payment_id": str(raw.get("PaymentId")) if raw.get("PaymentId") else None,
-                    "order_id": raw.get("OrderId"),
-                    "status": raw.get("Status"),
-                    "raw": raw,
-                }
+            raw = await client.post("Init", body)
             return {
-                "success": result.success,
-                "payment_url": result.payment_url,
-                "payment_id": result.payment_id,
-                "order_id": result.order_id,
-                "status": result.status,
-                "raw": result.raw,
+                "success": bool(raw.get("Success", False)),
+                "payment_url": raw.get("PaymentURL"),
+                "payment_id": str(raw.get("PaymentId")) if raw.get("PaymentId") else None,
+                "order_id": raw.get("OrderId"),
+                "status": raw.get("Status"),
+                "raw": raw,
             }
         except Exception:
             pay_log.exception("Ошибка создания платежа order=%s", order_id)
+            raise
+
+
+async def charge_recurring(
+    *,
+    amount: int,
+    order_id: str,
+    description: str,
+    rebill_id: str,
+    customer_key: str | None = None,
+    extra_data: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Init + Charge по сохранённому RebillId (MIT recurring)."""
+    AsyncTKassaClient, _ = _import_tbank()
+    pay_log.info(
+        "Рекуррентный Charge order=%s amount=%s rebill=%s",
+        order_id,
+        amount,
+        rebill_id,
+    )
+
+    init_body = _init_body(
+        amount=amount,
+        order_id=order_id,
+        description=description,
+        extra_data=extra_data,
+        customer_key=customer_key,
+        recurrent=False,
+        operation_initiator_type="R",
+    )
+
+    async with _make_client(AsyncTKassaClient) as client:
+        try:
+            init_raw = await client.post("Init", init_body)
+            if not init_raw.get("Success") or not init_raw.get("PaymentId"):
+                pay_log.error("Init for Charge failed order=%s raw=%s", order_id, init_raw)
+                return {
+                    "success": False,
+                    "payment_id": None,
+                    "status": init_raw.get("Status"),
+                    "raw": init_raw,
+                    "stage": "init",
+                }
+            payment_id = str(init_raw["PaymentId"])
+            charge_raw = await client.post(
+                "Charge",
+                {"PaymentId": payment_id, "RebillId": str(rebill_id)},
+            )
+            success = bool(charge_raw.get("Success", False))
+            status = charge_raw.get("Status")
+            pay_log.info(
+                "Charge result order=%s payment_id=%s success=%s status=%s",
+                order_id,
+                payment_id,
+                success,
+                status,
+            )
+            return {
+                "success": success and is_payment_successful(status),
+                "payment_id": payment_id,
+                "status": status,
+                "raw": charge_raw,
+                "init_raw": init_raw,
+                "stage": "charge",
+            }
+        except Exception:
+            pay_log.exception("Ошибка Charge order=%s", order_id)
             raise
 
 
@@ -198,22 +256,17 @@ async def cancel_payment(payment_id: str, amount: int) -> dict[str, Any]:
 
 
 def is_payment_successful(status: str | None) -> bool:
-    """Платёж успешно завершён (деньги получены)."""
-    return status == "CONFIRMED"
+    """Платёж успешен (деньги получены или холд AUTHORIZED)."""
+    return status in ("CONFIRMED", "AUTHORIZED")
 
 
 async def refund_payment(payment_id: str, amount: int | None = None) -> dict[str, Any]:
-    """Возврат средств через Cancel (для CONFIRMED = Refund в Т-Банке).
-
-    :param payment_id: PaymentId из Init/webhook
-    :param amount: сумма возврата в копейках; None = полный возврат
-    """
+    """Возврат средств через Cancel (для CONFIRMED = Refund в Т-Банке)."""
     AsyncTKassaClient, _ = _import_tbank()
     pay_log.info("Refund/Cancel payment_id=%s amount=%s", payment_id, amount)
 
     async with _make_client(AsyncTKassaClient) as client:
         try:
-            # Сырой Cancel с PascalCase — надёжнее, чем typed wrapper для частичных возвратов
             body: dict[str, Any] = {"PaymentId": str(payment_id)}
             if amount is not None:
                 body["Amount"] = int(amount)
@@ -235,4 +288,3 @@ async def refund_payment(payment_id: str, amount: int | None = None) -> dict[str
         except Exception:
             pay_log.exception("Ошибка refund payment_id=%s", payment_id)
             raise
-

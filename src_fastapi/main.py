@@ -32,21 +32,26 @@ logger = logging.getLogger(__name__)
 
 
 async def _background_tasks():
-    """Фоновые задачи: очистка expired-комнат, продление подписок."""
+    """Фоновые задачи: продление подписок, очистка комнат, expire."""
     from shared.models.game_room import GameRoomOrm
     from shared.models.subscription import SubscriptionOrm
+    from shared.subscription_renewal import process_subscription_renewals
 
     while True:
         try:
+            renew_stats = await process_subscription_renewals()
+            if renew_stats.get("tried"):
+                logger.info("Subscription renewals: %s", renew_stats)
             rooms = await GameRoomOrm.expire_overdue()
             if rooms:
-                logger.debug("Истёкших комнат очищено: %s", rooms)
+                logger.debug("Просроченных комнат очищено: %s", rooms)
             subs = await SubscriptionOrm.expire_overdue()
             if subs:
-                logger.debug("Истёкших подписок: %s", subs)
+                logger.debug("Просрочено подписок: %s", subs)
         except Exception:
             logger.exception("Ошибка фоновой очистки")
         await asyncio.sleep(60)
+
 
 
 @asynccontextmanager

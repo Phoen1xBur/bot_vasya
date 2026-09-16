@@ -108,6 +108,14 @@ export const api = {
     }),
   getMySubscription: () =>
     api.get<import("../types").SubscriptionInfo>("/api/subscriptions/me"),
+  cancelAutoRenew: () =>
+    api.post<{ ok: boolean; subscription: import("../types").SubscriptionInfo | null }>(
+      "/api/subscriptions/cancel_auto_renew"
+    ),
+  resumeAutoRenew: () =>
+    api.post<{ ok: boolean; subscription: import("../types").SubscriptionInfo | null }>(
+      "/api/subscriptions/resume_auto_renew"
+    ),
   // ---- Games ----
   createRoom: (body: { game_type: string; chat_id: number | null; target_id?: number; bet?: number }) =>
     api.post<import("../types").RoomState>("/api/games/rooms", body),

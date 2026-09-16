@@ -187,6 +187,26 @@ class SubscriptionOrm(Base):
             return True
 
     @staticmethod
+    async def enable_auto_renew(user_id: int) -> tuple[bool, str]:
+        """Включить автопродление, если есть сохранённый RebillId."""
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(SubscriptionOrm).filter(
+                    SubscriptionOrm.user_id == user_id,
+                    SubscriptionOrm.status == SubscriptionStatus.ACTIVE,
+                )
+            )
+            sub = result.scalars().first()
+            if sub is None:
+                return False, "no_active"
+            if not sub.recurring_key:
+                return False, "no_rebill"
+            sub.auto_renew = True
+            await session.commit()
+            return True, "ok"
+
+
+    @staticmethod
     async def get_expiring_soon(days: int = 3) -> list["SubscriptionOrm"]:
         """Подписки, истекающие в течение N дней с включённым автопродлением."""
         now = datetime.now()
@@ -217,7 +237,10 @@ class SubscriptionOrm(Base):
 
     @staticmethod
     async def expire_overdue() -> int:
-        """Помечает истёкшие подписки как EXPIRED. Возвращает кол-во."""
+        """Помечает просроченные подписки как EXPIRED.
+
+        Не трогает auto_renew + recurring_key — их сначала пытается продлить воркер.
+        """
         now = datetime.now()
         async with async_session_factory() as session:
             result = await session.execute(
@@ -227,7 +250,14 @@ class SubscriptionOrm(Base):
                 )
             )
             subs = result.scalars().all()
+            n = 0
             for sub in subs:
+                if sub.auto_renew and sub.recurring_key:
+                    continue
                 sub.status = SubscriptionStatus.EXPIRED
+                sub.auto_renew = False
+                n += 1
             await session.commit()
-            return len(subs)
+            return n
+
+
