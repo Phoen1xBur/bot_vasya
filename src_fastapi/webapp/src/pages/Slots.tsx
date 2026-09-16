@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api, ApiError } from "../api/client";
 import type { RoomState } from "../types";
-import { getUrlParams, haptic, hapticNotify, goBack } from "../lib/telegram";
+import { getUrlParams, getCurrentUserId, haptic, hapticNotify, goBack } from "../lib/telegram";
 import { soundWin, soundLose, soundSpin, soundClick } from "../lib/sound";
 import GlassCard from "../components/GlassCard";
 import NeonButton from "../components/NeonButton";
@@ -34,7 +34,7 @@ export default function Slots() {
   const spinRef = useRef(false);
 
   useEffect(() => {
-    api.createRoom({ game_type: "slots", chat_id: chatId ?? myId ?? undefined, bet: 0 })
+    api.createRoom({ game_type: "slots", chat_id: chatId ?? myId, bet: 0 })
       .then((r) => { setRoom(r as RoomState); setCreating(false); })
       .catch((e) => {
         setError(e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : e instanceof Error ? e.message : String(e));

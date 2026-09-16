@@ -45,7 +45,7 @@ export default function Roulette() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    api.createRoom({ game_type: "roulette", chat_id: chatId ?? myId ?? undefined, bet: 0 })
+    api.createRoom({ game_type: "roulette", chat_id: chatId ?? myId, bet: 0 })
       .then((r) => { setRoom(r as RoomState); setCreating(false); })
       .catch((e) => {
         setError(e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : e instanceof Error ? e.message : String(e));

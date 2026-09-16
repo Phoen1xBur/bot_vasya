@@ -45,7 +45,7 @@ export default function TTT() {
     try {
       const r = await api.createRoom({
         game_type: "ttt",
-        chat_id: chatId ?? myId ?? undefined,
+        chat_id: chatId ?? myId,
         target_id: targetId,
         bet: 0,
       });
