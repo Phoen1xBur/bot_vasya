@@ -228,11 +228,19 @@ export default function TTT() {
         </motion.div>
       )}
 
-      {room?.status === "active" && (
+      {(room?.status === "active" || room?.status === "finished") && (
         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-xs">
           <GlassCard>
             <div className="text-center mb-4">
-              {isMyTurn ? (
+              {room?.status === "finished" ? (
+                winnerId === 0 ? (
+                  <p className="text-white/80 font-bold">Ничья</p>
+                ) : winnerId === myId ? (
+                  <p className="text-neon-green font-black">Победа</p>
+                ) : (
+                  <p className="text-red-400 font-bold">Поражение</p>
+                )
+              ) : isMyTurn ? (
                 <p className="text-neon-green font-bold animate-pulse">Ваш ход ({myMark})</p>
               ) : (
                 <p className="text-white/50">Ход соперника ({turn === myMark ? "..." : turn})</p>
@@ -273,12 +281,12 @@ export default function TTT() {
       <AnimatePresence>
         {(room?.status === "finished" || room?.status === "expired" || room?.status === "cancelled") && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className="w-full max-w-sm"
+            className="w-full max-w-xs"
           >
-            <GlassCard glow className="text-center py-8">
+            <GlassCard glow className="text-center py-4">
               {winnerId === 0 ? (
                 <p className="text-2xl font-bold text-white/70">Ничья!</p>
               ) : winnerId === myId ? (

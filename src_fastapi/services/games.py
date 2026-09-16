@@ -440,6 +440,44 @@ async def _finish_game(room: GameRoomOrm, winner_id: int | None, draw: bool = Fa
         await _payout(room.chat_id, winner_id, bank)
 
 
+    if room.game_type == GameType.TTT:
+        await _notify_ttt_finished(room, winner_id, draw)
+
+
+async def _notify_ttt_finished(room: GameRoomOrm, winner_id: int | None, draw: bool) -> None:
+    """Сообщение в исходный групповой чат: кто выиграл / кто проиграл."""
+    try:
+        from shared.models.user import UserOrm
+        from shared.messaging import ensure_bus
+
+        async def _name(uid: int | None) -> str:
+            if not uid:
+                return "игрок"
+            u = await UserOrm.get_user_by_id(uid)
+            if u and getattr(u, "first_name", None):
+                return (u.first_name or "игрок").strip()
+            return f"id {uid}"
+
+        a = await _name(room.initiator_id)
+        b = await _name(room.target_id)
+        if draw:
+            text = f"⚔️ Дуэль крестики-нолики: ничья.\n{a} vs {b}"
+        elif winner_id == room.initiator_id:
+            text = f"⚔️ Дуэль крестики-нолики окончена.\nПобедил {a}, проиграл {b}."
+        elif winner_id == room.target_id:
+            text = f"⚔️ Дуэль крестики-нолики окончена.\nПобедил {b}, проиграл {a}."
+        else:
+            text = f"⚔️ Дуэль крестики-нолики окончена.\n{a} vs {b}"
+
+        bus = await ensure_bus()
+        await bus.publish(
+            "game.finished",
+            {"chat_id": int(room.chat_id), "result_text": text},
+        )
+    except Exception:
+        logger.exception("не удалось уведомить чат о результате TTT room=%s", room.id)
+
+
 async def get_room_state_view(room: GameRoomOrm) -> dict:
     return {
         "id": str(room.id),

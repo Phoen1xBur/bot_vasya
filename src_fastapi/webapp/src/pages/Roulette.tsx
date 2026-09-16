@@ -566,7 +566,7 @@ export default function Roulette() {
                 onClick={() => addBet("color", "red")}
                 className="relative py-2 rounded-md bg-red-700 text-white text-[11px] font-bold"
               >
-                Красн
+                Красный
                 <ChipBadge n={amountOn("color", "red")} />
               </button>
               <button
@@ -574,7 +574,7 @@ export default function Roulette() {
                 onClick={() => addBet("color", "black")}
                 className="relative py-2 rounded-md bg-zinc-900 text-white text-[11px] font-bold border border-white/20"
               >
-                Чёрн
+                Чёрный
                 <ChipBadge n={amountOn("color", "black")} />
               </button>
               <button
@@ -617,9 +617,6 @@ export default function Roulette() {
           <span className="flex items-center gap-2">
             <BackIcon size={16} /> Назад
           </span>
-        </NeonButton>
-        <NeonButton variant="purple" size="sm" onClick={createNewGame}>
-          Новая игра
         </NeonButton>
       </div>
     </div>

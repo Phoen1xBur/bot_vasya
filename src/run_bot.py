@@ -92,9 +92,9 @@ async def start_bus_consumer() -> None:
         async def on_event(routing_key: str, payload: dict) -> None:
             logger.debug("Bot bus event key=%s payload=%s", routing_key, payload)
             # Обработка событий от API (например, рассылка рекламы)
-            if routing_key == "ad.send":
+            if routing_key == "ad.send" or routing_key.endswith(".ad.send"):
                 await _handle_ad_send(payload)
-            elif routing_key == "game.finished":
+            elif routing_key == "game.finished" or routing_key.endswith(".game.finished"):
                 await _handle_game_finished(payload)
 
         await bus.consume(queue_name="vasya.bot", binding_keys=["api.#"], handler=on_event)
