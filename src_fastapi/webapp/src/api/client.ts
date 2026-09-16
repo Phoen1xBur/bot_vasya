@@ -98,6 +98,10 @@ export const api = {
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "POST", body }),
   // ---- User ----
+  getBalance: (chatId?: number | null) =>
+    api.get<{ money: number; vasya_coin: string; chat_id: number }>(
+      `/api/user/balance${chatId ? `?chat_id=${chatId}` : ""}`
+    ),
   getProfile: (chatId?: number | null) =>
     api.get<import("../types").UserProfile>("/api/user/profile", {
       chat_id: chatId ?? undefined,

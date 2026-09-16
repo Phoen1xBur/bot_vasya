@@ -188,6 +188,24 @@ export function goBackOrClose(fallback: string = "/webapp/?page=profile") {
 }
 
 /** True when running inside Telegram WebApp with initData. */
+
+export function goBack() {
+  try {
+    const wa = getTelegramWebApp();
+    if (wa?.close) {
+      wa.close();
+      return;
+    }
+  } catch {
+    // ignore
+  }
+  if (window.history.length > 1) {
+    window.history.back();
+    return;
+  }
+  window.location.href = "/webapp/?page=profile";
+}
+
 export function hasTelegramInitData(): boolean {
   return Boolean(getInitData());
 }
