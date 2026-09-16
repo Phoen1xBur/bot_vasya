@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime as dt, timedelta as td
 import logging
 import random
@@ -40,6 +41,17 @@ from run_bot import app  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
+_pyrogram_lock = asyncio.Lock()
+
+
+async def ensure_pyrogram() -> None:
+    """Keep one long-lived Pyrogram session (avoid sqlite closed database)."""
+    async with _pyrogram_lock:
+        if not app.is_connected:
+            await app.start()
+
+
+
 MEMBER_TYPE_ADMIN = (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR)
 
 
@@ -81,28 +93,28 @@ async def get_group_user(message: Message) -> GroupUserOrm:
 
 async def update_users(event: ChatMemberUpdated | Message) -> None:
     """Синхронизация участников чата с БД + обновление chat_unique_users."""
-    async with app:
-        async for member in app.get_chat_members(event.chat.id):
-            if member.user.is_bot:
-                continue
-            await UserOrm.insert_or_update_user(member.user.id, member.user)
-            await GroupUserOrm.insert_or_update_group_user(
-                member.user.id, event.chat.id, chat_member_status=member.status
-            )
+    await ensure_pyrogram()
+    async for member in app.get_chat_members(event.chat.id):
+        if member.user.is_bot:
+            continue
+        await UserOrm.insert_or_update_user(member.user.id, member.user)
+        await GroupUserOrm.insert_or_update_group_user(
+            member.user.id, event.chat.id, chat_member_status=member.status
+        )
     # Обновляем кэш уникальных пользователей для таргетинга рекламы
     await _update_chat_unique_users(event.chat.id)
 
 
 async def update_user(event: ChatMemberUpdated) -> None:
-    async with app:
-        try:
-            member = await app.get_chat_member(event.chat.id, event.new_chat_member.user.id)
-        except pyrogram.errors.bad_request_400.UserNotParticipant:
-            await GroupUserOrm.insert_or_update_group_user(
-                event.new_chat_member.user.id, event.chat.id,
-                chat_member_status=ChatMemberStatus.LEFT,
-            )
-            return
+    await ensure_pyrogram()
+    try:
+        member = await app.get_chat_member(event.chat.id, event.new_chat_member.user.id)
+    except pyrogram.errors.bad_request_400.UserNotParticipant:
+        await GroupUserOrm.insert_or_update_group_user(
+            event.new_chat_member.user.id, event.chat.id,
+            chat_member_status=ChatMemberStatus.LEFT,
+        )
+        return
     if member.user.is_bot:
         return
     await UserOrm.insert_or_update_user(member.user.id, member.user)
@@ -123,12 +135,12 @@ async def _update_chat_unique_users(chat_id: int) -> None:
 
 
 async def get_user_by_username(chat_id: int, username: str) -> pyrogram.types.User | None:
-    async with app:
-        try:
-            member = await app.get_chat_member(chat_id, username)
-            return member.user
-        except pyrogram.errors.bad_request_400.UserNotParticipant:
-            return None
+    await ensure_pyrogram()
+    try:
+        member = await app.get_chat_member(chat_id, username)
+        return member.user
+    except pyrogram.errors.bad_request_400.UserNotParticipant:
+        return None
 
 
 async def set_chance(message: Message, chance: int) -> str:

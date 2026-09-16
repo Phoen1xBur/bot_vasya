@@ -12,6 +12,25 @@ _settings = get_settings()
 router = Router(name=__name__)
 logger = logging.getLogger(__name__)
 
+# Telegram start payload limit is 64 chars; urlencode+base64 of full keys overflows.
+_GAME_SHORT = {
+    "ttt": "ttt",
+    "roulette": "roulette",
+    "slots": "slots",
+    "minigame_ttt": "ttt",
+    "minigame_roulette": "roulette",
+    "minigame_slots": "slots",
+}
+
+
+def _mg_start_payload(chat_id: int, game: str) -> str:
+    short = _GAME_SHORT.get(game, game.replace("minigame_", ""))
+    payload = f"c={chat_id}&f={short}"
+    if len(payload) > 64:
+        raise ValueError(f"start payload too long ({len(payload)}): {payload!r}")
+    return payload
+
+
 
 @router.callback_query(F.data.startswith("mg:select:"))
 async def on_select_minigame(callback: CallbackQuery):
@@ -38,10 +57,9 @@ async def on_select_minigame(callback: CallbackQuery):
             "slots": "minigame_slots",
         }.get(game, game)
 
-        from urllib.parse import urlencode
-
-        params = urlencode({"chat_id": chat.id, "request_func": game_param})
-        deep_link = await create_start_link(bot, params, encode=True)
+        deep_link = await create_start_link(
+            bot, _mg_start_payload(chat.id, game_param), encode=True
+        )
 
         kb = InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(text="🎮 Открыть игру в ЛС", url=deep_link)]]
@@ -65,10 +83,9 @@ async def on_game_invite(callback: CallbackQuery):
         chat_id = int(parts[3])
         creator_id = callback.from_user.id
 
-        from urllib.parse import urlencode
-
-        params = urlencode({"chat_id": chat_id, "request_func": f"minigame_{game_type}"})
-        deep_link = await create_start_link(bot, params, encode=True)
+        deep_link = await create_start_link(
+            bot, _mg_start_payload(chat_id, f"minigame_{game_type}"), encode=True
+        )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(text="🎮 Присоединиться", url=deep_link)]]
         )

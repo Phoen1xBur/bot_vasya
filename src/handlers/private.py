@@ -31,8 +31,19 @@ async def start(message: Message, command: CommandObject, bot: Bot):
     if command.args:
         try:
             params = parse_qs(command.args)
-            chat_id = params.get("chat_id", [None])[0]
+            # Compact: c=<chat_id>&f=<ttt|roulette|slots>
+            # Legacy: chat_id=...&request_func=minigame_...
+            chat_id = params.get("c", params.get("chat_id", [None]))[0]
+            short = params.get("f", [None])[0]
             request_func = params.get("request_func", [None])[0]
+            if short and not request_func:
+                request_func = {
+                    "ttt": "minigame_ttt",
+                    "roulette": "minigame_roulette",
+                    "slots": "minigame_slots",
+                    "profile": "profile",
+                    "casino": "casino",
+                }.get(short, short if short.startswith("minigame_") else f"minigame_{short}")
 
             match request_func, chat_id:
                 case "profile", chat_id:

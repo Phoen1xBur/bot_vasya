@@ -37,6 +37,11 @@ class TelegramChatOrm(Base):
             return result.scalars().first()
 
     @staticmethod
+    async def get_chance(chat_id: int) -> "TelegramChatOrm | None":
+        """Alias for get_telegram_chat (answer_chance lives on the row)."""
+        return await TelegramChatOrm.get_telegram_chat(chat_id)
+
+    @staticmethod
     async def change_answer_chance(chat_id: int, answer_chance: int) -> None:
         async with async_session_factory() as session:
             query = select(TelegramChatOrm).filter(TelegramChatOrm.chat_id == chat_id)
