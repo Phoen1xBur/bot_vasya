@@ -42,20 +42,6 @@ async def create_room(body: dict = Body(...), profile: dict = Depends(require_te
     bet = int(body.get("bet", 0))
     target_id = body.get("target_id")
 
-    # Проверка, что нет активной комнаты (для рулетки — вернём существующую в том же чате)
-    existing = await GameRoomOrm.get_active_for_user(profile["id"])
-    if existing:
-        if (
-            game_type == GameType.ROULETTE
-            and existing.game_type == GameType.ROULETTE
-            and int(existing.chat_id) == int(chat_id)
-        ):
-            return await game_service.get_room_state_view(existing)
-        # Смена мини-игры / залипшая комната — закрываем старую и создаём новую
-        if existing.game_type != game_type or int(existing.chat_id) != int(chat_id):
-            await GameRoomOrm.update(str(existing.id), status=GameRoomStatus.CANCELLED)
-        else:
-            raise HTTPException(status_code=409, detail="У вас уже есть активная игра")
 
     # Для TTT нужен target_id
     if game_type == GameType.TTT and not target_id:

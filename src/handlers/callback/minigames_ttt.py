@@ -396,26 +396,6 @@ async def on_ttt_pick_opponent(message: Message, bot: Bot):
     except Exception:
         logger.exception("expire_overdue before TTT create")
 
-    for uid in (creator_id, opponent.id):
-        existing = await GameRoomOrm.get_active_for_user(uid)
-        if existing:
-            kb = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="Завершить дуэль",
-                            callback_data=f"mg:ttt:force_cancel:{existing.id}",
-                        )
-                    ]
-                ]
-            )
-            await message.reply(
-                "У вас уже есть активная игра. Можете завершить её кнопкой ниже "
-                "(доступно создателю и оппоненту той комнаты).",
-                reply_markup=kb,
-            )
-            return
-
     room = await GameRoomOrm.create(
         game_type=GameType.TTT,
         chat_id=message.chat.id,

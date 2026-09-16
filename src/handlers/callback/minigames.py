@@ -71,51 +71,13 @@ async def on_select_minigame(callback: CallbackQuery):
                 await GameRoomOrm.expire_overdue()
             except Exception:
                 pass
-            existing = await GameRoomOrm.get_active_for_user(creator_id)
-            if (
-                existing
-                and existing.game_type == GameType.ROULETTE
-                and int(existing.chat_id) == int(chat.id)
-            ):
-                room = existing
-            else:
-                if existing and existing.game_type != GameType.ROULETTE:
-                    await GameRoomOrm.update(str(existing.id), status=GameRoomStatus.CANCELLED)
-                    existing = None
-                if (
-                    existing
-                    and existing.game_type == GameType.ROULETTE
-                    and int(existing.chat_id) != int(chat.id)
-                ):
-                    kb = InlineKeyboardMarkup(
-                        inline_keyboard=[
-                            [
-                                InlineKeyboardButton(
-                                    text="Завершить дуэль",
-                                    callback_data=f"mg:ttt:force_cancel:{existing.id}",
-                                )
-                            ]
-                        ]
-                    )
-                    await callback.message.answer(
-                        "У вас уже есть активная игра. Завершите её или дождитесь истечения:",
-                        reply_markup=kb,
-                    )
-                    await callback.answer(
-                        "У вас уже есть активная игра в другом чате",
-                        show_alert=True,
-                    )
-                    return
-                if existing is None:
-                    room = await GameRoomOrm.create(
-                        game_type=GameType.ROULETTE,
-                        chat_id=chat.id,
-                        initiator_id=creator_id,
-                        bet=0,
-                        ttl_minutes=_settings.GAME_ROOM_TTL_MINUTES,
-                    )
-                else:
-                    room = existing
+            room = await GameRoomOrm.create(
+                game_type=GameType.ROULETTE,
+                chat_id=chat.id,
+                initiator_id=creator_id,
+                bet=0,
+                ttl_minutes=_settings.GAME_ROOM_TTL_MINUTES,
+            )
             room_id = str(room.id)
             short = remember_room_short(room_id)
             room_note = f"\n🆔 Комната: <code>{short}</code>"
@@ -153,11 +115,6 @@ async def on_game_invite(callback: CallbackQuery):
         chat_id = int(parts[3])
 
         room_id = None
-        if game_type == "roulette":
-            existing = await GameRoomOrm.get_active_for_user(callback.from_user.id)
-            if existing and int(existing.chat_id) == chat_id:
-                room_id = str(existing.id)
-                remember_room_short(room_id)
 
         deep_link = await create_dm_start_link(
             bot,
