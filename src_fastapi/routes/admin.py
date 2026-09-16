@@ -145,13 +145,20 @@ async def list_campaigns_admin(
 async def list_payments(
     limit: int = 50, profile: dict = Depends(require_admin_user)
 ):
-    """Последние платежи."""
+    """Последние платежи (без неоплаченных NEW/PENDING)."""
     from sqlalchemy import select
     from shared.database import async_session_factory
 
     async with async_session_factory() as session:
         result = await session.execute(
-            select(PaymentOrm).order_by(PaymentOrm.created_at.desc()).limit(limit)
+            select(PaymentOrm)
+            .where(
+                PaymentOrm.status.notin_(
+                    [PaymentStatus.NEW, PaymentStatus.PENDING]
+                )
+            )
+            .order_by(PaymentOrm.created_at.desc())
+            .limit(limit)
         )
         payments = result.scalars().all()
     return {

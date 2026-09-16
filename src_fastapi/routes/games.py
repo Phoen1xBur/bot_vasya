@@ -88,6 +88,10 @@ async def get_room(room_id: str, profile: dict = Depends(require_telegram_user))
     room = await GameRoomOrm.get(room_id)
     if room is None:
         raise HTTPException(status_code=404, detail="Комната не найдена")
+    if room.game_type == GameType.TTT:
+        allowed = {room.initiator_id, room.target_id} - {None}
+        if profile["id"] not in allowed:
+            raise HTTPException(status_code=403, detail="Вы не приглашены")
     # Проверка не истекла ли
     if room.status in (GameRoomStatus.WAITING, GameRoomStatus.ACTIVE):
         from datetime import datetime
@@ -114,7 +118,7 @@ async def join_room(
     if room.game_type == GameType.TTT:
         # Дуэль: принять может только target_id
         if room.target_id != user_id:
-            raise HTTPException(status_code=403, detail="Эта дуэль не для вас")
+            raise HTTPException(status_code=403, detail="Вы не приглашены")
         if room.status != GameRoomStatus.WAITING:
             raise HTTPException(status_code=400, detail="Дуэль уже начата или завершена")
         # Списываем ставку target'а

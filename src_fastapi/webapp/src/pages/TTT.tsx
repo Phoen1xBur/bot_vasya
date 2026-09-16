@@ -34,39 +34,60 @@ export default function TTT() {
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
-  const [targetInput, setTargetInput] = useState(params.target || "");
-  const [needOpponent, setNeedOpponent] = useState(!params.target);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const createDuel = async (targetId: number) => {
-    setCreating(true);
-    setError(null);
-    setNeedOpponent(false);
-    try {
-      const r = await api.createRoom({
-        game_type: "ttt",
-        chat_id: chatId ?? myId,
-        target_id: targetId,
-        bet: 0,
-      });
-      setRoom(r as RoomState);
-    } catch (e) {
-      if (e instanceof ApiError) {
-        setError(e.detail?.toString?.() ?? e.message);
-      } else {
-        setError(e instanceof Error ? e.message : String(e));
-      }
-      setNeedOpponent(true);
-    } finally {
-      setCreating(false);
-    }
-  };
-
   useEffect(() => {
-    const targetId = params.target ? parseInt(params.target, 10) : NaN;
-    if (!Number.isFinite(targetId) || targetId <= 0) return;
-    void createDuel(targetId);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    let cancelled = false;
+    const boot = async () => {
+      setCreating(true);
+      setError(null);
+      try {
+        if (params.room) {
+          const r = await api.getRoom(params.room);
+          if (cancelled) return;
+          setRoom(r as RoomState);
+          // Opponent accepts waiting duel
+          if (r.status === "waiting" && myId && myId === r.target_id) {
+            try {
+              const joined = await api.joinRoom(r.id, {});
+              if (!cancelled) setRoom(joined as RoomState);
+            } catch {
+              // already active or not allowed — keep waiting view
+            }
+          }
+          return;
+        }
+        const targetId = params.target ? parseInt(params.target, 10) : NaN;
+        if (Number.isFinite(targetId) && targetId > 0) {
+          const r = await api.createRoom({
+            game_type: "ttt",
+            chat_id: chatId ?? myId,
+            target_id: targetId,
+            bet: 0,
+          });
+          if (!cancelled) setRoom(r as RoomState);
+          return;
+        }
+        setError(
+          "Создайте дуэль в группе: мини-игры → крестики-нолики → тегните оппонента или ответьте на его сообщение."
+        );
+      } catch (e) {
+        const msg =
+          e instanceof ApiError
+            ? (e.detail?.toString?.() ?? e.message)
+            : e instanceof Error
+              ? e.message
+              : String(e);
+        if (!cancelled) setError(msg);
+      } finally {
+        if (!cancelled) setCreating(false);
+      }
+    };
+    void boot();
+    return () => {
+      cancelled = true;
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
 
   // Poll for room state when waiting
@@ -139,41 +160,16 @@ export default function TTT() {
     );
   }
 
-  if ((needOpponent || error) && !room) {
+  if (error && !room) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen px-4 gap-4">
         <GlassCard className="max-w-md w-full text-center space-y-3">
           <p className="text-lg font-semibold">Крестики-нолики (дуэль)</p>
           <p className="text-sm text-white/70">
-            Укажите Telegram ID соперника (число). ID можно узнать у @userinfobot
-            или у любого бота, который показывает user id.
+            Создайте дуэль в группе: мини-игры → крестики-нолики, затем тегните
+            оппонента или ответьте на его сообщение. В комнату войдёте только вы двое.
           </p>
-          <input
-            className="w-full rounded-xl bg-black/30 border border-white/20 px-3 py-2 text-center"
-            placeholder="ID соперника"
-            value={targetInput}
-            onChange={(e) => setTargetInput(e.target.value.replace(/[^0-9]/g, ""))}
-            inputMode="numeric"
-          />
-          {error && <p className="text-red-400 text-sm">{error}</p>}
-          <NeonButton
-            variant="pink"
-            disabled={creating || !targetInput}
-            onClick={() => {
-              const id = parseInt(targetInput, 10);
-              if (!id) {
-                setError("Введите числовой ID соперника");
-                return;
-              }
-              if (myId && id === myId) {
-                setError("Нельзя вызвать самого себя");
-                return;
-              }
-              void createDuel(id);
-            }}
-          >
-            {creating ? "Создаём…" : "Вызвать на дуэль"}
-          </NeonButton>
+          <p className="text-red-400 text-sm">{error}</p>
         </GlassCard>
         <NeonButton variant="cyan" onClick={() => goBack()}>
           <span className="flex items-center gap-2"><BackIcon size={16} /> Назад</span>

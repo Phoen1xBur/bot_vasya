@@ -70,6 +70,17 @@ async def answer_by_bot_name(
     sub_tier: SubscriptionTier = SubscriptionTier.FREE,
     sub_tag: str = "",
 ):
+    # Пока создатель выбирает оппонента для дуэли — не перехватываем его сообщение
+    try:
+        picking = get_redis().hgetall(f"mg:ttt:picking:{message.chat.id}")
+        if picking:
+            cid = picking.get("creator_id") or picking.get(b"creator_id")
+            if cid is not None:
+                cid_s = cid.decode() if isinstance(cid, bytes) else str(cid)
+                if message.from_user and str(message.from_user.id) == cid_s:
+                    return
+    except Exception:
+        pass
     if chat_settings is None:
         chat_settings = await TelegramChatOrm.get_telegram_chat(message.chat.id)
         if chat_settings is None:
@@ -274,6 +285,16 @@ async def echo(message: Message, chat_settings: TelegramChatOrm | None):
         return
     if message.via_bot or message.forward_origin:
         return
+    try:
+        picking = get_redis().hgetall(f"mg:ttt:picking:{message.chat.id}")
+        if picking:
+            cid = picking.get("creator_id") or picking.get(b"creator_id")
+            if cid is not None:
+                cid_s = cid.decode() if isinstance(cid, bytes) else str(cid)
+                if message.from_user and str(message.from_user.id) == cid_s:
+                    return
+    except Exception:
+        pass
 
     if chat_settings is None:
         chat_settings = await TelegramChatOrm.get_telegram_chat(message.chat.id)

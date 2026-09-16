@@ -412,7 +412,13 @@ function PaymentsTab() {
 
   useEffect(() => {
     api.getPayments(50)
-      .then((r) => setPayments(r.payments))
+      .then((r) =>
+        setPayments(
+          (r.payments || []).filter(
+            (p) => p.status !== "NEW" && p.status !== "PENDING"
+          )
+        )
+      )
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

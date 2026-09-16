@@ -52,15 +52,15 @@ async def start(message: Message, command: CommandObject, bot: Bot):
                 case "casino", _:
                     await message.answer("Казино", reply_markup=build_inline_kb_webapp_casino())
                 case "minigame_ttt", chat_id:
-                    url = f"{_settings.WEBAPP_BASE_URL}/webapp/index.html?page=ttt&chat_id={chat_id}"
+                    url = f"{_settings.WEBAPP_BASE_URL}/webapp/?page=ttt&chat_id={chat_id}"
                     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Играть в крестики-нолики", web_app=WebAppInfo(url=url))]])
                     await message.answer("Крестики-нолики: откройте WebApp", reply_markup=kb)
                 case "minigame_roulette", chat_id:
-                    url = f"{_settings.WEBAPP_BASE_URL}/webapp/index.html?page=roulette&chat_id={chat_id}"
+                    url = f"{_settings.WEBAPP_BASE_URL}/webapp/?page=roulette&chat_id={chat_id}"
                     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🎰 Играть в рулетку", web_app=WebAppInfo(url=url))]])
                     await message.answer("Рулетка: откройте WebApp", reply_markup=kb)
                 case "minigame_slots", chat_id:
-                    url = f"{_settings.WEBAPP_BASE_URL}/webapp/index.html?page=slots&chat_id={chat_id}"
+                    url = f"{_settings.WEBAPP_BASE_URL}/webapp/?page=slots&chat_id={chat_id}"
                     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔔 Слот-машина", web_app=WebAppInfo(url=url))]])
                     await message.answer("Слот-машина: откройте WebApp", reply_markup=kb)
                 case _:

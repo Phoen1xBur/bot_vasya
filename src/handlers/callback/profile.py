@@ -1,7 +1,6 @@
 import logging
 
 from aiogram import F, Router
-from aiogram.filters.callback_data import CallbackData
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from shared.models.group_user import GroupUserOrm
@@ -13,10 +12,14 @@ logger = logging.getLogger(__name__)
 
 @router.callback_query(UserSettings.filter(F.action == "toggle_tag"))
 async def toggle_tag(callback: CallbackQuery, callback_data: UserSettings):
-    """Включить/выключить тег участника в чате."""
+    """Включить/выключить тег — только владелец профиля."""
     try:
+        if callback.from_user.id != callback_data.user_id:
+            await callback.answer("Это не ваш профиль", show_alert=True)
+            return
+
         chat_id = callback_data.chat_id
-        user_id = callback.from_user.id
+        user_id = callback_data.user_id
         can_tag = await GroupUserOrm.change_can_tag(user_id, chat_id)
         label = "❌ Выключить тег" if can_tag else "✅ Включить тег"
         kb = InlineKeyboardMarkup(
@@ -24,7 +27,9 @@ async def toggle_tag(callback: CallbackQuery, callback_data: UserSettings):
                 [
                     InlineKeyboardButton(
                         text=label,
-                        callback_data=UserSettings(action="toggle_tag", chat_id=chat_id).pack(),
+                        callback_data=UserSettings(
+                            action="toggle_tag", chat_id=chat_id, user_id=user_id
+                        ).pack(),
                     )
                 ]
             ]

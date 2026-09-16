@@ -13,7 +13,9 @@ async def profile_change_settings(user_id: int, tg_chat_id: int, notification: s
             [
                 InlineKeyboardButton(
                     text=label,
-                    callback_data=UserSettings(action="toggle_tag", chat_id=tg_chat_id).pack(),
+                    callback_data=UserSettings(
+                        action="toggle_tag", chat_id=tg_chat_id, user_id=user_id
+                    ).pack(),
                 )
             ]
         ]
