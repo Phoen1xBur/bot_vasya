@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api, ApiError } from "../api/client";
 import type { RoomState } from "../types";
-import { getUrlParams, getCurrentUserId, haptic, hapticNotify } from "../lib/telegram";
+import { getUrlParams, getCurrentUserId, haptic, hapticNotify, goBack } from "../lib/telegram";
 import { soundWin, soundLose, soundClick } from "../lib/sound";
 import GlassCard from "../components/GlassCard";
 import NeonButton from "../components/NeonButton";
@@ -31,27 +31,41 @@ export default function TTT() {
   const myId = getCurrentUserId();
   const [room, setRoom] = useState<RoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(true);
+  const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [targetInput, setTargetInput] = useState(params.target || "");
+  const [needOpponent, setNeedOpponent] = useState(!params.target);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Create room on mount
-  useEffect(() => {
-    const targetId = params.target ? parseInt(params.target) : null;
-    api.createRoom({ game_type: "ttt", chat_id: chatId, target_id: targetId ?? undefined, bet: 0 })
-      .then((r) => {
-        setRoom(r as RoomState);
-        setCreating(false);
-      })
-      .catch((e) => {
-        if (e instanceof ApiError) {
-          setError(e.detail?.toString?.() ?? e.message);
-        } else {
-          setError(e instanceof Error ? e.message : String(e));
-        }
-        setCreating(false);
+  const createDuel = async (targetId: number) => {
+    setCreating(true);
+    setError(null);
+    setNeedOpponent(false);
+    try {
+      const r = await api.createRoom({
+        game_type: "ttt",
+        chat_id: chatId ?? myId ?? undefined,
+        target_id: targetId,
+        bet: 0,
       });
+      setRoom(r as RoomState);
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setError(e.detail?.toString?.() ?? e.message);
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+      setNeedOpponent(true);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  useEffect(() => {
+    const targetId = params.target ? parseInt(params.target, 10) : NaN;
+    if (!Number.isFinite(targetId) || targetId <= 0) return;
+    void createDuel(targetId);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
@@ -125,13 +139,43 @@ export default function TTT() {
     );
   }
 
-  if (error && !room) {
+  if ((needOpponent || error) && !room) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen px-4 gap-4">
-        <GlassCard className="max-w-md text-center">
-          <p className="text-red-400">{error}</p>
+        <GlassCard className="max-w-md w-full text-center space-y-3">
+          <p className="text-lg font-semibold">Крестики-нолики (дуэль)</p>
+          <p className="text-sm text-white/70">
+            Укажите Telegram ID соперника (число). ID можно узнать у @userinfobot
+            или у любого бота, который показывает user id.
+          </p>
+          <input
+            className="w-full rounded-xl bg-black/30 border border-white/20 px-3 py-2 text-center"
+            placeholder="ID соперника"
+            value={targetInput}
+            onChange={(e) => setTargetInput(e.target.value.replace(/[^0-9]/g, ""))}
+            inputMode="numeric"
+          />
+          {error && <p className="text-red-400 text-sm">{error}</p>}
+          <NeonButton
+            variant="pink"
+            disabled={creating || !targetInput}
+            onClick={() => {
+              const id = parseInt(targetInput, 10);
+              if (!id) {
+                setError("Введите числовой ID соперника");
+                return;
+              }
+              if (myId && id === myId) {
+                setError("Нельзя вызвать самого себя");
+                return;
+              }
+              void createDuel(id);
+            }}
+          >
+            {creating ? "Создаём…" : "Вызвать на дуэль"}
+          </NeonButton>
         </GlassCard>
-        <NeonButton variant="cyan" onClick={() => window.history.back()}>
+        <NeonButton variant="cyan" onClick={() => goBack()}>
           <span className="flex items-center gap-2"><BackIcon size={16} /> Назад</span>
         </NeonButton>
       </div>
@@ -244,7 +288,7 @@ export default function TTT() {
                 <p className="text-2xl font-bold text-red-400">Поражение 😔</p>
               )}
               <div className="mt-4">
-                <NeonButton variant="cyan" onClick={() => window.history.back()}>
+                <NeonButton variant="cyan" onClick={() => goBack()}>
                   <span className="flex items-center gap-2"><BackIcon size={16} /> Закрыть</span>
                 </NeonButton>
               </div>

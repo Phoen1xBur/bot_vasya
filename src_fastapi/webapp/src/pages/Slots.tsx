@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api, ApiError } from "../api/client";
 import type { RoomState } from "../types";
-import { getUrlParams, haptic, hapticNotify } from "../lib/telegram";
+import { getUrlParams, haptic, hapticNotify, goBack } from "../lib/telegram";
 import { soundWin, soundLose, soundSpin, soundClick } from "../lib/sound";
 import GlassCard from "../components/GlassCard";
 import NeonButton from "../components/NeonButton";
@@ -22,6 +22,7 @@ const PAYOUTS: Record<string, number> = {
 export default function Slots() {
   const params = getUrlParams();
   const chatId = params.chat_id ? parseInt(params.chat_id) : null;
+  const myId = getCurrentUserId();
   const [room, setRoom] = useState<RoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(true);
@@ -33,7 +34,7 @@ export default function Slots() {
   const spinRef = useRef(false);
 
   useEffect(() => {
-    api.createRoom({ game_type: "slots", chat_id: chatId, bet: 0 })
+    api.createRoom({ game_type: "slots", chat_id: chatId ?? myId ?? undefined, bet: 0 })
       .then((r) => { setRoom(r as RoomState); setCreating(false); })
       .catch((e) => {
         setError(e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : e instanceof Error ? e.message : String(e));
@@ -213,7 +214,7 @@ export default function Slots() {
         ))}
       </div>
 
-      <NeonButton variant="cyan" size="sm" onClick={() => window.history.back()}>
+      <NeonButton variant="cyan" size="sm" onClick={() => goBack()}>
         <span className="flex items-center gap-2"><BackIcon size={16} /> Назад</span>
       </NeonButton>
     </div>

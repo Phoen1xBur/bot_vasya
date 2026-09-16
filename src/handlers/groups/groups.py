@@ -79,6 +79,7 @@ async def answer_by_bot_name(
             return
 
     arr_msg = [w.casefold() for w in message.text.split()[1:]]
+    logger.info("name-cmd hit chat=%s user=%s text=%r", message.chat.id, message.from_user.id if message.from_user else None, message.text)
     group_user: GroupUserOrm = await func.get_group_user(message)
     chat_id = message.chat.id
 

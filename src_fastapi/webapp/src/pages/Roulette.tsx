@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api, ApiError } from "../api/client";
 import type { RoomState } from "../types";
-import { getUrlParams, getCurrentUserId, haptic, hapticNotify } from "../lib/telegram";
+import { getUrlParams, getCurrentUserId, haptic, hapticNotify, goBack } from "../lib/telegram";
 import { soundWin, soundLose, soundSpin, soundClick } from "../lib/sound";
 import GlassCard from "../components/GlassCard";
 import NeonButton from "../components/NeonButton";
@@ -45,7 +45,7 @@ export default function Roulette() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    api.createRoom({ game_type: "roulette", chat_id: chatId, bet: 0 })
+    api.createRoom({ game_type: "roulette", chat_id: chatId ?? myId ?? undefined, bet: 0 })
       .then((r) => { setRoom(r as RoomState); setCreating(false); })
       .catch((e) => {
         setError(e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : e instanceof Error ? e.message : String(e));
@@ -284,7 +284,7 @@ export default function Roulette() {
         </NeonButton>
       </GlassCard>
 
-      <NeonButton variant="cyan" size="sm" onClick={() => window.history.back()}>
+      <NeonButton variant="cyan" size="sm" onClick={() => goBack()}>
         <span className="flex items-center gap-2"><BackIcon size={16} /> Назад</span>
       </NeonButton>
     </div>

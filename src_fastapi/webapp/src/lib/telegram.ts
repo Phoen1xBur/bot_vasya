@@ -145,3 +145,22 @@ export function isTelegramOnlyPage(page: PageName, params: UrlParams): boolean {
   // any deep-link into a room is Telegram-only
   return Boolean(params.room || params.game);
 }
+
+
+/** Close Mini App or fall back to history / profile. */
+export function goBack() {
+  try {
+    const wa = getTelegramWebApp();
+    if (wa?.close) {
+      wa.close();
+      return;
+    }
+  } catch {
+    // ignore
+  }
+  if (window.history.length > 1) {
+    window.history.back();
+    return;
+  }
+  window.location.href = "/webapp/?page=profile";
+}

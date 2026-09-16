@@ -51,7 +51,9 @@ async def ensure_group_user_from_message(message: Message) -> GroupUserOrm:
         raise ValueError("message.from_user is required")
     await TelegramChatOrm.insert_or_update_telegram_chat(message.chat.id)
     await UserOrm.insert_or_update_user(tg_user.id, tg_user)
-    await GroupUserOrm.insert_or_update_group_user(tg_user.id, message.chat.id)
+    await GroupUserOrm.insert_or_update_group_user(
+        tg_user.id, message.chat.id, chat_member_status=ChatMemberStatus.MEMBER
+    )
     group_user = await GroupUserOrm.get_group_user(tg_user.id, message.chat.id)
     if group_user is None:
         raise RuntimeError(f"Failed to upsert GroupUser user={tg_user.id} chat={message.chat.id}")

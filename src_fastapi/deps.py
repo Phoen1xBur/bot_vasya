@@ -26,6 +26,7 @@ def _extract_init_data(request: Request) -> str:
     """
     init_data = request.headers.get("X-Telegram-Init-Data", "")
     if not init_data:
+        logger.warning("auth: missing initData path=%s", request.url.path)
         init_data = request.headers.get("X-Tg-Init-Data", "")
     if not init_data:
         auth = request.headers.get("Authorization", "")
@@ -47,7 +48,15 @@ async def require_telegram_user(request: Request) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Отсутствует Telegram initData",
         )
-    if not validate_telegram_init_data(init_data, _settings.TOKEN):
+    ok = validate_telegram_init_data(init_data, _settings.TOKEN)
+    logger.info(
+        "auth: path=%s initData_len=%s valid=%s has_user=%s",
+        request.url.path,
+        len(init_data),
+        ok,
+        "user=" in init_data,
+    )
+    if not ok:
         logger.warning("Неверная подпись initData")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

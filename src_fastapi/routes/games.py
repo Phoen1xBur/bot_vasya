@@ -31,9 +31,11 @@ async def create_room(body: dict = Body(...), profile: dict = Depends(require_te
     except ValueError:
         raise HTTPException(status_code=400, detail="Неверный тип игры")
 
-    chat_id = int(body.get("chat_id", 0))
+    chat_id = int(body.get("chat_id") or 0)
+    # Solo games from Main App menu have no group chat_id — use user_id
     if chat_id == 0:
-        raise HTTPException(status_code=400, detail="Не указан chat_id")
+        chat_id = int(profile["id"])
+        logger.info("create_room: solo fallback chat_id=user_id=%s type=%s", chat_id, game_type_str)
 
     bet = int(body.get("bet", 0))
     target_id = body.get("target_id")

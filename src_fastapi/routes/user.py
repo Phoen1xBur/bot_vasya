@@ -23,7 +23,16 @@ async def get_user_profile(
     user_id = profile["id"]
     user = await UserOrm.get_user_by_id(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        logger.info("profile: creating user %s from initData", user_id)
+        await UserOrm.insert_or_update_user(
+            user_id,
+            first_name=profile.get("first_name"),
+            last_name=profile.get("last_name"),
+            username=profile.get("username"),
+        )
+        user = await UserOrm.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
 
     money = 0
     if chat_id is not None:
