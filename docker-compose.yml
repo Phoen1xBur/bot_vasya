@@ -83,6 +83,8 @@ services:
         condition: service_healthy
     expose:
       - "8000"
+    ports:
+      - "127.0.0.1:8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
       interval: 15s
@@ -110,6 +112,8 @@ services:
         condition: service_healthy
 
   nginx:
+    # Optional edge proxy. On servers with host nginx, omit this profile.
+    profiles: ["edge"]
     image: nginx:1.27-alpine
     restart: unless-stopped
     depends_on:
