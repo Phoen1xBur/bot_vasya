@@ -86,16 +86,16 @@ async def create_payment(
         password=_settings.TBANK_TERMINAL_PASSWORD,
         client=_tbank_http_client(),
     ) as client:
-        # Базовые параметры
-        params_data = {
-            "amount": amount,
-            "order_id": order_id,
-            "description": description,
+        # Т-Банк Init ждёт PascalCase (Amount/OrderId/...), не snake_case
+        params_data: dict = {
+            "Amount": amount,
+            "OrderId": order_id,
+            "Description": description,
         }
         if _settings.tbank_success_url:
-            params_data["SUCCESS_URL"] = _settings.tbank_success_url
+            params_data["SuccessURL"] = _settings.tbank_success_url
         if _settings.tbank_fail_url:
-            params_data["FAILURL"] = _settings.tbank_fail_url
+            params_data["FailURL"] = _settings.tbank_fail_url
         if _settings.tbank_notification_url:
             params_data["NotificationURL"] = _settings.tbank_notification_url
         if extra_data:
