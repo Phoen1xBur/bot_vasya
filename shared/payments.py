@@ -35,17 +35,27 @@ def _import_tbank():
 
 
 def _make_client(AsyncTKassaClient):
-    kwargs = dict(
-        terminal_key=_settings.TBANK_TERMINAL_ID,
-        password=_settings.TBANK_TERMINAL_PASSWORD,
-    )
+    """Собрать AsyncTKassaClient; при TBANK_SSL_VERIFY=false — свой httpx без verify.
+
+    Библиотека не принимает verify= в конструкторе (только client=), поэтому
+    старый kwargs["verify"]=False молча отбрасывался и SSL снова падал.
+    """
+    import httpx
+
+    kwargs: dict = {
+        "terminal_key": _settings.TBANK_TERMINAL_ID,
+        "password": _settings.TBANK_TERMINAL_PASSWORD,
+    }
     if not _settings.TBANK_SSL_VERIFY:
-        kwargs["verify"] = False
-    try:
-        return AsyncTKassaClient(**kwargs)
-    except TypeError:
-        kwargs.pop("verify", None)
-        return AsyncTKassaClient(**kwargs)
+        logger.warning(
+            "TBANK_SSL_VERIFY=false — TLS verification DISABLED for T-Bank HTTP client"
+        )
+        kwargs["client"] = httpx.AsyncClient(timeout=60.0, verify=False)
+        client = AsyncTKassaClient(**kwargs)
+        # library sets _own_client=False for injected clients; force close on aexit
+        client._own_client = True
+        return client
+    return AsyncTKassaClient(**kwargs)
 
 
 def verify_webhook_token(payload: dict[str, Any]) -> bool:
