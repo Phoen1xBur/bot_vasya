@@ -12,6 +12,12 @@ import sys
 from pathlib import Path
 from time import sleep
 
+# Python 3.14: pyrogram calls get_event_loop() at import time.
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
 from aiogram import Bot, Dispatcher
 from pyrogram import Client
 
