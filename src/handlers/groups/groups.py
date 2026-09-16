@@ -59,14 +59,11 @@ messages_rules = [
 
 
 async def _dm_deeplink_button(bot: Bot, text: str, request_func: str, chat_id: int | None = None) -> InlineKeyboardMarkup:
-    from urllib.parse import urlencode
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    from aiogram.utils.deep_linking import create_start_link
-    q = {"request_func": request_func}
-    if chat_id is not None:
-        q["chat_id"] = chat_id
-    link = await create_start_link(bot, urlencode(q), encode=True)
+    from utils.deeplink import create_dm_start_link
+    link = await create_dm_start_link(bot, request_func=request_func, chat_id=chat_id)
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=text, url=link)]])
+
 
 def _tag_prefix(sub_tag: str) -> str:
     return f"[{sub_tag}] " if sub_tag else ""

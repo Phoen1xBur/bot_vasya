@@ -1,5 +1,5 @@
 import logging
-from urllib.parse import parse_qs
+from utils.deeplink import parse_start_args, resolve_room_id
 
 from aiogram import Bot, Router
 from aiogram.filters import Command, CommandObject, CommandStart
@@ -26,21 +26,22 @@ router.message.filter(ChatTypeFilter(ChatType.PRIVATE))
 _settings = get_settings()
 
 
-@router.message(CommandStart(deep_link=True, deep_link_encoded=True))
+@router.message(CommandStart(deep_link=True))
 async def start(message: Message, command: CommandObject, bot: Bot):
     if command.args:
         try:
-            params = parse_qs(command.args)
-            chat_id = params.get("chat_id", [None])[0]
-            request_func = params.get("request_func", [None])[0]
+            params = parse_start_args(command.args)
+            chat_id = params.get("chat_id")
+            request_func = params.get("request_func")
 
-            room = params.get("room", [None])[0]
+            room = await resolve_room_id(params.get("room"))
             match request_func, chat_id:
                 case "profile", chat_id:
                     answer = await func.profile_for_chat(message.from_user.id, int(chat_id))
                     await message.answer(answer)
-                case "casino", _:
-                    await message.answer("🎰 Казино открыто в Mini App:", reply_markup=build_inline_kb_webapp_casino())
+                case "casino", chat_id:
+                    cid = int(chat_id) if chat_id else None
+                    await message.answer("🎰 Казино открыто в Mini App:", reply_markup=build_inline_kb_webapp_casino(cid))
                 case "subscribe", _:
                     url = f"{_settings.WEBAPP_BASE_URL.rstrip('/')}/webapp/?page=subscribe"
                     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⭐ Оформить подписку", web_app=WebAppInfo(url=url))]])

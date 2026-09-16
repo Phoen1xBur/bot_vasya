@@ -1,14 +1,13 @@
 import logging
-from urllib.parse import urlencode
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.utils.deep_linking import create_start_link
 
 from shared.config import get_settings
-from shared.enums import GameType
+from shared.enums import GameRoomStatus, GameType
 from shared.models.game_room import GameRoomOrm
 from shared.redis_client import get_redis
+from utils.deeplink import create_dm_start_link, remember_room_short
 from run_bot import bot
 
 _settings = get_settings()
@@ -18,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 @router.callback_query(F.data.startswith("mg:select:"))
 async def on_select_minigame(callback: CallbackQuery):
-    """Выбор игры в чате → одна кнопка «Открыть игру в ЛС» с room id (без web_app в группе)."""
+    """Выбор игры в чате: TTT — тег соперника; остальные — открыть в ЛС."""
     try:
         chat = callback.message.chat if callback.message else None
         if not chat:
@@ -33,8 +32,34 @@ async def on_select_minigame(callback: CallbackQuery):
         except Exception:
             pass
 
+        if game == "ttt":
+            try:
+                r = get_redis()
+                key = f"mg:ttt:picking:{chat.id}"
+                r.hset(key, mapping={"creator_id": str(creator_id)})
+                r.expire(key, 300)
+            except Exception:
+                logger.exception("не удалось включить TTT picking")
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="Отмена",
+                            callback_data=f"mg:ttt:pick_cancel:{chat.id}:{creator_id}",
+                        )
+                    ]
+                ]
+            )
+            await callback.message.edit_text(
+                "⚔️ <b>Крестики-нолики</b>\n"
+                "Тегни соперника (@username) или ответь <b>реплаем</b> на его сообщение.",
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+            await callback.answer()
+            return
+
         game_param = {
-            "ttt": "minigame_ttt",
             "roulette": "minigame_roulette",
             "slots": "minigame_slots",
         }.get(game, game)
@@ -42,7 +67,6 @@ async def on_select_minigame(callback: CallbackQuery):
         room_id = None
         room_note = ""
         if game == "roulette":
-            # Создаём комнату сразу, чтобы в анонсе был уникальный id
             existing = await GameRoomOrm.get_active_for_user(creator_id)
             if (
                 existing
@@ -51,35 +75,39 @@ async def on_select_minigame(callback: CallbackQuery):
             ):
                 room = existing
             else:
-                if existing:
+                if existing and existing.game_type != GameType.ROULETTE:
+                    await GameRoomOrm.update(str(existing.id), status=GameRoomStatus.CANCELLED)
+                    existing = None
+                if (
+                    existing
+                    and existing.game_type == GameType.ROULETTE
+                    and int(existing.chat_id) != int(chat.id)
+                ):
                     await callback.answer(
                         "У вас уже есть активная игра в другом чате",
                         show_alert=True,
                     )
                     return
-                room = await GameRoomOrm.create(
-                    game_type=GameType.ROULETTE,
-                    chat_id=chat.id,
-                    initiator_id=creator_id,
-                    bet=0,
-                    ttl_minutes=_settings.GAME_ROOM_TTL_MINUTES,
-                )
+                if existing is None:
+                    room = await GameRoomOrm.create(
+                        game_type=GameType.ROULETTE,
+                        chat_id=chat.id,
+                        initiator_id=creator_id,
+                        bet=0,
+                        ttl_minutes=_settings.GAME_ROOM_TTL_MINUTES,
+                    )
+                else:
+                    room = existing
             room_id = str(room.id)
-            short = room_id.replace("-", "")[:8]
+            short = remember_room_short(room_id)
             room_note = f"\n🆔 Комната: <code>{short}</code>"
-            try:
-                get_redis().setex(
-                    f"game:room:{room.id}",
-                    _settings.GAME_ROOM_TTL_MINUTES * 60,
-                    room_id,
-                )
-            except Exception:
-                pass
 
-        q = {"chat_id": chat.id, "request_func": game_param}
-        if room_id:
-            q["room"] = room_id
-        deep_link = await create_start_link(bot, urlencode(q), encode=True)
+        deep_link = await create_dm_start_link(
+            bot,
+            request_func=game_param,
+            chat_id=chat.id,
+            room_id=room_id,
+        )
 
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -89,7 +117,7 @@ async def on_select_minigame(callback: CallbackQuery):
         text = (
             f"🎰 Рулетка создана!{room_note}\nОткройте игру в личке с ботом:"
             if game == "roulette"
-            else "Игра начинается! Откройте в личных сообщениях с ботом:"
+            else "Игра начинается! Откройте в личном сообщении с ботом:"
         )
         await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
         await callback.answer()
@@ -100,27 +128,32 @@ async def on_select_minigame(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("mg:invite:"))
 async def on_game_invite(callback: CallbackQuery):
-    """Приглашение в игру — одна кнопка открытия в ЛС (с room при возможности)."""
+    """Приглашение в игру — кнопка открыть в ЛС."""
     try:
         parts = callback.data.split(":")  # mg, invite, game_type, chat_id
         game_type = parts[2]
         chat_id = int(parts[3])
 
-        q = {"chat_id": chat_id, "request_func": f"minigame_{game_type}"}
-        # если у пользователя уже есть активная рулетка в этом чате — приложим room
+        room_id = None
         if game_type == "roulette":
             existing = await GameRoomOrm.get_active_for_user(callback.from_user.id)
             if existing and int(existing.chat_id) == chat_id:
-                q["room"] = str(existing.id)
+                room_id = str(existing.id)
+                remember_room_short(room_id)
 
-        deep_link = await create_start_link(bot, urlencode(q), encode=True)
+        deep_link = await create_dm_start_link(
+            bot,
+            request_func=f"minigame_{game_type}",
+            chat_id=chat_id,
+            room_id=room_id,
+        )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="🎮 Открыть игру в ЛС", url=deep_link)]
             ]
         )
         await callback.message.edit_text(
-            f"Игра «{game_type}» открыта! Одна кнопка — вход в ЛС:",
+            f"Игра «{game_type}» открыта! Одна кнопка — прямо в ЛС:",
             reply_markup=kb,
         )
         await callback.answer()
