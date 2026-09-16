@@ -475,7 +475,10 @@ function PaymentsTab() {
 
   useEffect(() => {
     api.getPayments(50)
-      .then((r) => setPayments(r.payments))
+      .then((r) => {
+        const hide = new Set(["NEW", "PENDING", "AUTHORIZED", "new", "pending", "authorized"]);
+        setPayments((r.payments || []).filter((p) => !hide.has(String(p.status || ""))));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

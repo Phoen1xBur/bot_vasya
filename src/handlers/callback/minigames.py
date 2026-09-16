@@ -67,6 +67,10 @@ async def on_select_minigame(callback: CallbackQuery):
         room_id = None
         room_note = ""
         if game == "roulette":
+            try:
+                await GameRoomOrm.expire_overdue()
+            except Exception:
+                pass
             existing = await GameRoomOrm.get_active_for_user(creator_id)
             if (
                 existing
@@ -83,6 +87,20 @@ async def on_select_minigame(callback: CallbackQuery):
                     and existing.game_type == GameType.ROULETTE
                     and int(existing.chat_id) != int(chat.id)
                 ):
+                    kb = InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [
+                                InlineKeyboardButton(
+                                    text="Завершить дуэль",
+                                    callback_data=f"mg:ttt:force_cancel:{existing.id}",
+                                )
+                            ]
+                        ]
+                    )
+                    await callback.message.answer(
+                        "У вас уже есть активная игра. Завершите её или дождитесь истечения:",
+                        reply_markup=kb,
+                    )
                     await callback.answer(
                         "У вас уже есть активная игра в другом чате",
                         show_alert=True,

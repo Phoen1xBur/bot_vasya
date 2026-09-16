@@ -26,7 +26,7 @@ router.message.filter(ChatTypeFilter(ChatType.PRIVATE))
 _settings = get_settings()
 
 
-@router.message(CommandStart(deep_link=True))
+@router.message(CommandStart(deep_link=True, deep_link_encoded=True))
 async def start(message: Message, command: CommandObject, bot: Bot):
     if command.args:
         try:
@@ -54,9 +54,32 @@ async def start(message: Message, command: CommandObject, bot: Bot):
                     from keyboards.inline_kb_webapp_casino import build_inline_kb_webapp_advertise
                     await message.answer("📢 Форма рекламы:", reply_markup=build_inline_kb_webapp_advertise())
                 case "minigame_ttt", chat_id:
-                    url = f"{_settings.WEBAPP_BASE_URL}/webapp/?page=ttt&chat_id={chat_id}"
-                    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Играть в крестики-нолики", web_app=WebAppInfo(url=url))]])
-                    await message.answer("Крестики-нолики — откройте Mini App:", reply_markup=kb)
+                    # Дуэль: только initiator/target комнаты получают WebApp-кнопку
+                    if room:
+                        from shared.models.game_room import GameRoomOrm
+                        gr = await GameRoomOrm.get(room)
+                        uid = message.from_user.id if message.from_user else None
+                        if gr is None:
+                            await message.answer("Комната не найдена или истекла.")
+                            return
+                        if uid not in (gr.initiator_id, gr.target_id):
+                            await message.answer("Эта комната не для вас.")
+                            return
+                        q = f"page=ttt&chat_id={chat_id or gr.chat_id}&room={room}"
+                        if gr.target_id:
+                            q += f"&target={gr.target_id}"
+                        url = f"{_settings.WEBAPP_BASE_URL.rstrip('/')}/webapp/?{q}"
+                        role = "крестики (X)" if uid == gr.initiator_id else "нолики (O)"
+                        kb = InlineKeyboardMarkup(
+                            inline_keyboard=[[InlineKeyboardButton(text="⚔️ Открыть дуэль", web_app=WebAppInfo(url=url))]]
+                        )
+                        await message.answer(f"⚔️ Дуэль — вы {role}. Откройте Mini App:", reply_markup=kb)
+                    else:
+                        url = f"{_settings.WEBAPP_BASE_URL.rstrip('/')}/webapp/?page=ttt&chat_id={chat_id}"
+                        kb = InlineKeyboardMarkup(
+                            inline_keyboard=[[InlineKeyboardButton(text="❌ Играть в крестики-нолики", web_app=WebAppInfo(url=url))]]
+                        )
+                        await message.answer("Крестики-нолики — откройте Mini App:", reply_markup=kb)
                 case "minigame_roulette", chat_id:
                     q = f"page=roulette&chat_id={chat_id}"
                     if room:

@@ -90,21 +90,23 @@ export default function TTT() {
     };
   }, []);
 
-  // Poll for room state when waiting
+  // Poll room state while waiting OR active — иначе второй игрок не видит ходы
   useEffect(() => {
     if (!room) return;
-    if (room.status === "waiting") {
-      pollRef.current = setInterval(async () => {
-        try {
-          const r = await api.getRoom(room.id);
-          setRoom(r);
-        } catch {
-          // room may be expired
-        }
-      }, 1500);
-      return () => { if (pollRef.current) clearInterval(pollRef.current); };
-    }
-  }, [room?.status]);
+    if (room.status !== "waiting" && room.status !== "active") return;
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await api.getRoom(room.id);
+        setRoom(r as RoomState);
+      } catch {
+        // room may be expired
+      }
+    }, 1000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [room?.id, room?.status]);
 
   const board: string = (room?.state as { board?: string } | null)?.board ?? "         ";
   const turn: string = (room?.state as { turn?: string } | null)?.turn ?? "X";
@@ -139,9 +141,17 @@ export default function TTT() {
     haptic("light");
     soundClick();
     try {
-      const res = await api.roomAction(room.id, { cell });
+      const res = await api.roomAction(room.id, { cell }) as Partial<RoomState> & { board?: string; turn?: string; status?: string };
+      // Сразу применяем ответ action (board/turn), затем подтверждаем getRoom
+      if (res && (res.board || res.turn || res.status)) {
+        setRoom((prev) => {
+          if (!prev) return prev;
+          const state = { ...(prev.state as object), board: res.board ?? (prev.state as { board?: string })?.board, turn: res.turn ?? (prev.state as { turn?: string })?.turn };
+          return { ...prev, state, status: (res.status as RoomState["status"]) ?? prev.status, winner_id: (res as { winner?: number }).winner ?? prev.winner_id };
+        });
+      }
       const updated = await api.getRoom(room.id);
-      setRoom(updated);
+      setRoom(updated as RoomState);
     } catch (e) {
       const msg = e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : e instanceof Error ? e.message : String(e);
       hapticNotify("error");

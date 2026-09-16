@@ -6,6 +6,7 @@
 import logging
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 
 from shared.config import get_settings
 from shared.enums import GameRoomStatus, GameType
@@ -109,7 +110,8 @@ async def get_room(room_id: str, profile: dict = Depends(require_telegram_user))
         if room.expires_at and room.expires_at < datetime.now():
             await GameRoomOrm.update(room_id, status=GameRoomStatus.EXPIRED)
             raise HTTPException(status_code=410, detail="Комната истекла")
-    return await game_service.get_room_state_view(room)
+    view = await game_service.get_room_state_view(room)
+    return JSONResponse(content=view, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/rooms/{room_id}/join")

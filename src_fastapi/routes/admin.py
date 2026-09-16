@@ -149,9 +149,16 @@ async def list_payments(
     from sqlalchemy import select
     from shared.database import async_session_factory
 
+    from shared.enums import PaymentStatus
+
+    # Скрываем неоплаченные/открытые статусы (NEW/PENDING/AUTHORIZED)
+    unpaid = (PaymentStatus.NEW, PaymentStatus.PENDING, PaymentStatus.AUTHORIZED)
     async with async_session_factory() as session:
         result = await session.execute(
-            select(PaymentOrm).order_by(PaymentOrm.created_at.desc()).limit(limit)
+            select(PaymentOrm)
+            .where(PaymentOrm.status.notin_(unpaid))
+            .order_by(PaymentOrm.created_at.desc())
+            .limit(limit)
         )
         payments = result.scalars().all()
     return {

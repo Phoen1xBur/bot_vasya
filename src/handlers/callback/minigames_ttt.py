@@ -64,8 +64,43 @@ def _webapp_ttt_url(chat_id: int, room_id: str, target_id: int) -> str:
     return f"{_settings.WEBAPP_BASE_URL}/webapp/?{q}"
 
 
+async def _lookup_username_in_db(chat_id: int, username: str) -> int | None:
+    """Ищем user_id по username в UserOrm / GroupUserOrm (case-insensitive)."""
+    from sqlalchemy import func, select
+
+    from shared.database import async_session_factory
+    from shared.models.group_user import GroupUserOrm
+    from shared.models.user import UserOrm
+
+    uname = username.lstrip("@").strip()
+    if not uname:
+        return None
+    async with async_session_factory() as session:
+        q = (
+            select(UserOrm.user_id)
+            .join(GroupUserOrm, GroupUserOrm.user_id == UserOrm.user_id)
+            .where(
+                GroupUserOrm.telegram_chat_id == chat_id,
+                func.lower(UserOrm.username) == uname.lower(),
+            )
+            .limit(1)
+        )
+        row = (await session.execute(q)).first()
+        if row:
+            return int(row[0])
+        q2 = (
+            select(UserOrm.user_id)
+            .where(func.lower(UserOrm.username) == uname.lower())
+            .limit(1)
+        )
+        row2 = (await session.execute(q2)).first()
+        if row2:
+            return int(row2[0])
+    return None
+
+
 async def _resolve_opponent(message: Message, bot: Bot) -> User | None:
-    """Оппонент из reply или упоминания."""
+    """Оппонент из reply или упоминания: get_chat → DB → get_chat_member."""
     if message.reply_to_message and message.reply_to_message.from_user:
         u = message.reply_to_message.from_user
         if not u.is_bot:
@@ -84,44 +119,90 @@ async def _resolve_opponent(message: Message, bot: Bot) -> User | None:
                 continue
             try:
                 chat = await bot.get_chat(f"@{username}")
-                if getattr(chat, "type", None) == "private" or getattr(chat, "id", None):
-                    # get_chat returns Chat; build minimal User-like via get_chat_member if in group
+                uid = getattr(chat, "id", None)
+                if uid:
                     try:
-                        member = await bot.get_chat_member(message.chat.id, chat.id)
+                        member = await bot.get_chat_member(message.chat.id, uid)
                         if member.user and not member.user.is_bot:
                             return member.user
                     except Exception:
-                        # fallback: synthetic check with chat.id
                         from aiogram.types import User as TgUser
 
                         return TgUser(
-                            id=chat.id,
+                            id=uid,
                             is_bot=False,
                             first_name=getattr(chat, "first_name", None) or username,
                             username=getattr(chat, "username", None) or username,
                         )
             except Exception:
-                logger.info("Не удалось резолвить @%s", username, exc_info=True)
+                logger.info("get_chat(@%s) failed, fallback to DB", username)
+
+            try:
+                uid = await _lookup_username_in_db(message.chat.id, username)
+                if uid:
+                    member = await bot.get_chat_member(message.chat.id, uid)
+                    if member.user and not member.user.is_bot:
+                        return member.user
+            except Exception:
+                logger.info("DB/@%s resolve failed", username, exc_info=True)
     return None
 
 
+async def _duel_start_kb(bot: Bot, chat_id: int, room_id: str) -> InlineKeyboardMarkup:
+    """URL-кнопка t.me/.../start=... (короткий alphanumeric + encode=True)."""
+    from utils.deeplink import create_dm_start_link
+
+    link = await create_dm_start_link(
+        bot,
+        request_func="minigame_ttt",
+        chat_id=chat_id,
+        room_id=room_id,
+    )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="⚔️ Start — открыть дуэль", url=link)]]
+    )
+
+
 async def _send_duel_links(
-    bot: Bot, chat_id: int, creator_id: int, opponent_id: int, room_id: str
+    bot: Bot,
+    chat_id: int,
+    creator_id: int,
+    opponent_id: int,
+    room_id: str,
+    *,
+    group_message: Message | None = None,
 ) -> None:
+    """Опциональные ЛС с WebApp. Группа уже имеет Start — Forbidden не критичен."""
     url = _webapp_ttt_url(chat_id, room_id, opponent_id)
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="⚔️ Открыть дуэль", web_app=WebAppInfo(url=url))]
         ]
     )
-    for uid, text in (
+    failed: list[int] = []
+    for uid, dm_text in (
         (creator_id, "⚔️ Дуэль создана! Откройте игру (вы — крестики):"),
         (opponent_id, "⚔️ Вас вызвали на дуэль! Откройте игру (вы — нолики):"),
     ):
         try:
-            await bot.send_message(uid, text, reply_markup=kb)
+            await bot.send_message(uid, dm_text, reply_markup=kb)
+        except Exception as e:
+            failed.append(uid)
+            logger.warning("DM дуэль user=%s недоступен: %s", uid, e)
+
+    if failed and group_message is not None:
+        start_kb = await _duel_start_kb(bot, chat_id, room_id)
+        names = ", ".join(f'<a href="tg://user?id={u}">игрок</a>' for u in failed)
+        try:
+            await group_message.answer(
+                f"⚠️ {names}: бот не может написать в ЛС "
+                f"(заблокирован или ещё не нажат /start). "
+                f"Нажмите Start ниже:",
+                reply_markup=start_kb,
+                parse_mode="HTML",
+            )
         except Exception:
-            logger.warning("Не удалось отправить дуэль в ЛС user=%s", uid, exc_info=True)
+            logger.exception("не удалось уведомить группу о blocked DM")
 
 
 @router.callback_query(F.data.startswith("mg:ttt:pick_cancel:"))
@@ -168,6 +249,38 @@ async def on_ttt_cancel(callback: CallbackQuery):
         await callback.answer("Произошла ошибка", show_alert=True)
 
 
+@router.callback_query(F.data.startswith("mg:ttt:force_cancel:"))
+async def on_ttt_force_cancel(callback: CallbackQuery):
+    """Завершить sticky-комнату: только initiator или target этой room."""
+    try:
+        from shared.enums import GameRoomStatus
+
+        room_id = callback.data.split(":")[-1]
+        room = await GameRoomOrm.get(room_id)
+        if room is None:
+            await callback.answer("Комната не найдена", show_alert=True)
+            return
+        uid = callback.from_user.id
+        if uid not in (room.initiator_id, room.target_id):
+            await callback.answer("Завершить может только участник этой дуэли", show_alert=True)
+            return
+        await GameRoomOrm.update(str(room.id), status=GameRoomStatus.CANCELLED)
+        try:
+            get_redis().delete(_room_key(int(room.chat_id)))
+            get_redis().delete(_picking_key(int(room.chat_id)))
+        except Exception:
+            pass
+        if callback.message:
+            try:
+                await callback.message.edit_text("Дуэль завершена участником.")
+            except Exception:
+                pass
+        await callback.answer("Дуэль завершена")
+    except Exception:
+        logger.exception("Ошибка force_cancel TTT")
+        await callback.answer("Произошла ошибка", show_alert=True)
+
+
 @router.callback_query(F.data.startswith("mg:ttt:accept:"))
 async def on_ttt_accept(callback: CallbackQuery):
     """Принятие дуэли — только назначенный оппонент (если ещё используется)."""
@@ -201,7 +314,6 @@ async def on_ttt_accept(callback: CallbackQuery):
         except Exception:
             pass
 
-        # Комната в БД
         existing = await GameRoomOrm.get_active_for_user(creator_id)
         if existing and existing.chat_id == chat_id and existing.game_type == GameType.TTT:
             room = existing
@@ -221,9 +333,15 @@ async def on_ttt_accept(callback: CallbackQuery):
             )
             await GameRoomOrm.update(str(room.id), state={"board": " " * 9, "turn": "X"})
 
-        await _send_duel_links(callback.bot, chat_id, creator_id, user_id, str(room.id))
+        await _send_duel_links(
+            callback.bot, chat_id, creator_id, user_id, str(room.id), group_message=callback.message
+        )
         if callback.message:
-            await callback.message.edit_text("⚔️ Дуэль началась! Проверьте личные сообщения.")
+            start_kb = await _duel_start_kb(callback.bot, chat_id, str(room.id))
+            await callback.message.edit_text(
+                "⚔️ Дуэль началась! Войти могут только участники — нажмите Start:",
+                reply_markup=start_kb,
+            )
         await callback.answer()
     except Exception:
         logger.exception("Ошибка accept TTT")
@@ -273,12 +391,28 @@ async def on_ttt_pick_opponent(message: Message, bot: Bot):
     except Exception:
         pass
 
-    # Одна активная комната на пользователя
+    try:
+        await GameRoomOrm.expire_overdue()
+    except Exception:
+        logger.exception("expire_overdue before TTT create")
+
     for uid in (creator_id, opponent.id):
         existing = await GameRoomOrm.get_active_for_user(uid)
         if existing:
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="Завершить дуэль",
+                            callback_data=f"mg:ttt:force_cancel:{existing.id}",
+                        )
+                    ]
+                ]
+            )
             await message.reply(
-                "У вас или у оппонента уже есть активная игра. Завершите её или дождитесь истечения."
+                "У вас уже есть активная игра. Можете завершить её кнопкой ниже "
+                "(доступно создателю и оппоненту той комнаты).",
+                reply_markup=kb,
             )
             return
 
@@ -309,9 +443,13 @@ async def on_ttt_pick_opponent(message: Message, bot: Bot):
     mention_opp = opponent.mention_html() if hasattr(opponent, "mention_html") else (
         f'<a href="tg://user?id={opponent.id}">{opponent.full_name or opponent.first_name}</a>'
     )
+    start_kb = await _duel_start_kb(bot, message.chat.id, str(room.id))
     await message.answer(
         f"⚔️ Дуэль создана: вы против {mention_opp}.\n"
-        "В комнату могут войти только вы двое. Проверьте ЛС с ботом — там кнопка «Открыть дуэль».",
+        "В комнату могут войти только вы двое. Нажмите Start:",
+        reply_markup=start_kb,
         parse_mode="HTML",
     )
-    await _send_duel_links(bot, message.chat.id, creator_id, opponent.id, str(room.id))
+    await _send_duel_links(
+        bot, message.chat.id, creator_id, opponent.id, str(room.id), group_message=message
+    )

@@ -40,6 +40,10 @@ class GameRoomOrm(Base):
         bet: int = 0,
         ttl_minutes: int = 15,
     ) -> "GameRoomOrm":
+        try:
+            await GameRoomOrm.expire_overdue()
+        except Exception:
+            pass
         now = datetime.now()
         from datetime import timedelta
 
@@ -89,6 +93,10 @@ class GameRoomOrm(Base):
     @staticmethod
     async def get_active_for_user(user_id: int) -> "GameRoomOrm | None":
         """Активная комната, где пользователь участник."""
+        try:
+            await GameRoomOrm.expire_overdue()
+        except Exception:
+            pass
         async with async_session_factory() as session:
             result = await session.execute(
                 select(GameRoomOrm).filter(

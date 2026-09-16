@@ -79,7 +79,13 @@ async def ttt_action(room: GameRoomOrm, user_id: int, action: dict) -> dict:
         state["turn"] = "O" if turn == "X" else "X"
 
     await GameRoomOrm.update(str(room.id), state=state)
-    return {"board": board, "turn": state.get("turn"), "winner": state.get("winner"), "status": _room_status(room)}
+    refreshed = await GameRoomOrm.get(str(room.id))
+    return {
+        "board": board,
+        "turn": state.get("turn"),
+        "winner": state.get("winner"),
+        "status": _room_status(refreshed or room),
+    }
 
 
 # ---------------- Рулетка (до 8 игроков) ----------------
