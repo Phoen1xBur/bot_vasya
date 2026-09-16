@@ -1,3 +1,4 @@
+import logging
 import random
 from datetime import datetime
 
@@ -27,6 +28,7 @@ from handlers import func
 from handlers.command import CommandCat
 
 router = Router(name=__name__)
+logger = logging.getLogger(__name__)
 router.message.filter(
     ChatTypeFilter(ChatType.GROUP, ChatType.SUPERGROUP),
     MessageTypeFilter(ContentType.TEXT),
@@ -76,7 +78,7 @@ async def answer_by_bot_name(
         if chat_settings is None:
             return
 
-    arr_msg = message.text.split()[1:]
+    arr_msg = [w.casefold() for w in message.text.split()[1:]]
     group_user: GroupUserOrm = await func.get_group_user(message)
     chat_id = message.chat.id
 
@@ -165,6 +167,12 @@ async def answer_by_bot_name(
             keyboard = build_inline_kb_minigames_select()
             command = SendMessage(chat_id=chat_id, text="Выберите мини-игру:", reply_markup=keyboard)
         case _:
+            logger.info(
+                "groups name-cmd unmatched: chat=%s text=%r arr=%r",
+                chat_id,
+                message.text,
+                arr_msg,
+            )
             msg_from_db = await MessageOrm.get_messages(message.chat.id)
             if chat_settings.ai_generate_text:
                 messages = [{"role": "user", "content": f"[{msg[1] or msg[2] or msg[3]}] " + msg[0]} for msg in reversed(msg_from_db)]

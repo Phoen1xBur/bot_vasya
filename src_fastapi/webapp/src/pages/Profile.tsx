@@ -34,7 +34,7 @@ export default function Profile() {
       })
       .catch((e) => {
         if (e instanceof ApiError) setError(e.detail?.toString?.() ?? e.message);
-        else setError(String(e));
+        else setError(e instanceof Error ? e.message : String(e));
       })
       .finally(() => setLoading(false));
   }, []);

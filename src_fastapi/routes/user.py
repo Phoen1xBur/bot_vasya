@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/user", tags=["Пользователь"])
 
 @router.get("/profile")
 async def get_user_profile(
-    chat_id: int = Query(default=None),
+    chat_id: int | None = Query(default=None),
     profile: dict = Depends(require_telegram_user),
 ):
     """Профиль пользователя с балансом для конкретного чата."""
@@ -26,10 +26,12 @@ async def get_user_profile(
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
     money = 0
-    if chat_id:
+    if chat_id is not None:
         group_user = await GroupUserOrm.get_group_user(user_id, chat_id)
         if group_user:
             money = group_user.money
+    else:
+        money = await GroupUserOrm.get_total_money(user_id)
 
     return {
         "user_id": user_id,

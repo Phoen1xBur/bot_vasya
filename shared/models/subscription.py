@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.database import Base, async_session_factory
 from shared.enums import SubscriptionTier, SubscriptionStatus
+from shared.sa_enum import str_enum
 
 # Базовые цены подписок (копейки). Настраиваются в админке.
 TIER_PRICES_KOPECKS = {
@@ -58,8 +59,8 @@ class SubscriptionOrm(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, index=True)
-    tier: Mapped[SubscriptionTier] = mapped_column(default=SubscriptionTier.FREE)
-    status: Mapped[SubscriptionStatus] = mapped_column(default=SubscriptionStatus.PENDING)
+    tier: Mapped[SubscriptionTier] = mapped_column(str_enum(SubscriptionTier), default=SubscriptionTier.FREE)
+    status: Mapped[SubscriptionStatus] = mapped_column(str_enum(SubscriptionStatus), default=SubscriptionStatus.PENDING)
     auto_renew: Mapped[bool] = mapped_column(Boolean, default=False)
     # Ключ рекуррентного списания Т-Банка (для автопродления)
     recurring_key: Mapped[str | None] = mapped_column(String(256), nullable=True)

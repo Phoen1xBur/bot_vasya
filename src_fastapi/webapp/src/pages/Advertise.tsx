@@ -54,7 +54,7 @@ export default function Advertise() {
       hapticNotify("success");
       soundWin();
     } catch (e) {
-      const msg = e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : String(e);
+      const msg = e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : e instanceof Error ? e.message : String(e);
       setError(msg);
       hapticNotify("error");
     } finally {

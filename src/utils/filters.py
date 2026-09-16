@@ -1,4 +1,6 @@
 
+import logging
+
 from typing import Union
 
 from aiogram.filters import BaseFilter
@@ -26,15 +28,19 @@ class MessageTypeFilter(BaseFilter):
     async def __call__(self, message: Message) -> bool:
         if isinstance(self.message_type, ContentType):
             return message.content_type == self.message_type
-        return message.content_type in self.message_type
-
-
-class BotNameFilter(BaseFilter):
+        return message.content_type in selfclass BotNameFilter(BaseFilter):
     def __init__(self, bot_names: Union[str, tuple]):
-        self.bot_names = bot_names
+        if isinstance(bot_names, str):
+            names = (bot_names,)
+        else:
+            names = tuple(bot_names)
+        # Casefold both sides so «Вася» / «ВАСЯ» match BOT_NAMES.
+        self.bot_names = tuple(n.casefold() for n in names)
 
     async def __call__(self, message: Message) -> bool:
         try:
-            return message.text.casefold().split()[0] in self.bot_names
+            first = message.text.casefold().split()[0]
         except (IndexError, AttributeError):
             return False
+        return first in self.bot_names
+   return False

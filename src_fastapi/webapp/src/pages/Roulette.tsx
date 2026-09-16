@@ -48,7 +48,7 @@ export default function Roulette() {
     api.createRoom({ game_type: "roulette", chat_id: chatId, bet: 0 })
       .then((r) => { setRoom(r as RoomState); setCreating(false); })
       .catch((e) => {
-        setError(e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : String(e));
+        setError(e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : e instanceof Error ? e.message : String(e));
         setCreating(false);
       });
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -65,7 +65,7 @@ export default function Roulette() {
         const joined = await api.joinRoom(room.id, { bet: amount });
         setRoom(joined);
       } catch (e) {
-        const msg = e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : String(e);
+        const msg = e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : e instanceof Error ? e.message : String(e);
         setError(msg);
         hapticNotify("error");
         return;
@@ -95,7 +95,7 @@ export default function Roulette() {
         soundLose();
       }
     } catch (e) {
-      const msg = e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : String(e);
+      const msg = e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : e instanceof Error ? e.message : String(e);
       setError(msg);
       hapticNotify("error");
     } finally {

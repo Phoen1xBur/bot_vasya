@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.database import Base, async_session_factory
 from shared.enums import AdCampaignStatus
+from shared.sa_enum import str_enum
 
 
 class AdCampaignOrm(Base):
@@ -21,7 +22,7 @@ class AdCampaignOrm(Base):
     target_unique_users: Mapped[int] = mapped_column(Integer)  # запрошенные у.п.
     selected_chats: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)
     price: Mapped[int] = mapped_column(Integer, default=0)  # копейки
-    status: Mapped[AdCampaignStatus] = mapped_column(default=AdCampaignStatus.DRAFT, index=True)
+    status: Mapped[AdCampaignStatus] = mapped_column(str_enum(AdCampaignStatus), default=AdCampaignStatus.DRAFT, index=True)
     # Результат AI-проверки: {"approved": bool, "reason": str, "risk_level": str}
     ai_verdict: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     admin_comment: Mapped[str | None] = mapped_column(String(1024), nullable=True)

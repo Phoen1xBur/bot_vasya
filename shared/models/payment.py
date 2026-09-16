@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.database import Base
 from shared.enums import PaymentStatus, PaymentType
+from shared.sa_enum import str_enum
 
 
 class PaymentOrm(Base):
@@ -23,8 +24,8 @@ class PaymentOrm(Base):
     payment_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     user_id: Mapped[int] = mapped_column(BigInteger, index=True)
     amount: Mapped[int]  # в копейках
-    payment_type: Mapped[PaymentType] = mapped_column(index=True)
-    status: Mapped[PaymentStatus] = mapped_column(default=PaymentStatus.NEW)
+    payment_type: Mapped[PaymentType] = mapped_column(str_enum(PaymentType), index=True)
+    status: Mapped[PaymentStatus] = mapped_column(str_enum(PaymentStatus), default=PaymentStatus.NEW)
     # Доп. метаданные (tier подписки, donate-сумма, campaign_id и т.д.)
     meta: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     # Флаг: товар уже выдан (защита от дублей webhook)

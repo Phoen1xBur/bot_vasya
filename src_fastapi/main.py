@@ -168,8 +168,7 @@ def _landing_html() -> str:
       </ul>
       <div class="actions">
         <a class="btn primary" href="{bot_link}" target="_blank" rel="noopener">Открыть {bot_label} в Telegram</a>
-        <a class="btn ghost" href="/webapp/">WebApp</a>
-      </div>
+</div>
       <p class="foot">
         Игровые комнаты и казино открываются только из Telegram. Если вы просто зашли на сайт — добавьте бота в чат и запускайте игры оттуда.
       </p>

@@ -23,7 +23,7 @@ export default function Admin() {
     api.getAdminStats().catch((e) => {
       if (e instanceof ApiError && (e.status === 403 || e.status === 401)) {
         setDenied(true);
-        setDeniedMsg(e.detail?.toString?.() ?? "Доступ только для администраторов");
+        setDeniedMsg(e.message || "Доступ только для администраторов");
       }
     });
   }, []);

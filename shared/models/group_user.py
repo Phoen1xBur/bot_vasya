@@ -83,7 +83,20 @@ class GroupUserOrm(Base):
             res = await session.execute(query)
             return res.scalars().one_or_none()
 
+    
     @staticmethod
+    async def get_total_money(user_id: int) -> int:
+        """Суммарный баланс пользователя по всем чатам (для WebApp без chat_id)."""
+        async with async_session_factory() as session:
+            from sqlalchemy import func
+
+            query = select(func.coalesce(func.sum(GroupUserOrm.money), 0)).filter(
+                GroupUserOrm.user_id == user_id
+            )
+            res = await session.execute(query)
+            return int(res.scalar_one())
+
+@staticmethod
     async def get_groups_user_by_telegram_chat_id(tg_chat_id: int) -> list["GroupUserOrm"]:
         async with async_session_factory() as session:
             query = (

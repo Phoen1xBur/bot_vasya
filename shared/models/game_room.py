@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.database import Base, async_session_factory
 from shared.enums import GameRoomStatus, GameType
+from shared.sa_enum import str_enum
 
 
 class GameRoomOrm(Base):
@@ -19,11 +20,11 @@ class GameRoomOrm(Base):
     __tablename__ = "game_room"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    game_type: Mapped[GameType] = mapped_column(index=True)
+    game_type: Mapped[GameType] = mapped_column(str_enum(GameType), index=True)
     chat_id: Mapped[int] = mapped_column(BigInteger, index=True)  # чат-источник
     initiator_id: Mapped[int] = mapped_column(BigInteger, index=True)
     target_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)  # для дуэли
-    status: Mapped[GameRoomStatus] = mapped_column(default=GameRoomStatus.WAITING, index=True)
+    status: Mapped[GameRoomStatus] = mapped_column(str_enum(GameRoomStatus), default=GameRoomStatus.WAITING, index=True)
     state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     bet: Mapped[int] = mapped_column(Integer, default=0)  # ставка в васякоинах
     winner_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

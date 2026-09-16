@@ -36,7 +36,7 @@ export default function Slots() {
     api.createRoom({ game_type: "slots", chat_id: chatId, bet: 0 })
       .then((r) => { setRoom(r as RoomState); setCreating(false); })
       .catch((e) => {
-        setError(e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : String(e));
+        setError(e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : e instanceof Error ? e.message : String(e));
         setCreating(false);
       });
   }, []);
@@ -76,7 +76,7 @@ export default function Slots() {
       }
     } catch (e) {
       clearInterval(spinInterval);
-      const msg = e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : String(e);
+      const msg = e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : e instanceof Error ? e.message : String(e);
       setError(msg);
       hapticNotify("error");
     } finally {

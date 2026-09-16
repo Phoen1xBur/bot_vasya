@@ -1,11 +1,43 @@
 // API client: attaches Authorization header from Telegram initData to all fetch calls
 import { getInitData } from "../lib/telegram";
 
+/** Human-readable FastAPI / validation error detail (string | object | array). */
+export function formatApiDetail(detail: unknown): string {
+  if (detail == null || detail === "") return "";
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          const rec = item as Record<string, unknown>;
+          const loc = Array.isArray(rec.loc) ? rec.loc.filter((x) => x !== "body" && x !== "query").join(".") : "";
+          const msg = typeof rec.msg === "string" ? rec.msg : JSON.stringify(item);
+          return loc ? `${loc}: ${msg}` : msg;
+        }
+        return String(item);
+      })
+      .filter(Boolean)
+      .join("; ");
+  }
+  if (typeof detail === "object") {
+    const rec = detail as Record<string, unknown>;
+    if ("detail" in rec) return formatApiDetail(rec.detail);
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return String(detail);
+    }
+  }
+  return String(detail);
+}
+
 export class ApiError extends Error {
   status: number;
   detail: unknown;
   constructor(status: number, detail: unknown) {
-    super(typeof detail === "string" ? detail : `HTTP ${status}`);
+    const msg = formatApiDetail(detail) || `HTTP ${status}`;
+    super(msg);
     this.status = status;
     this.detail = detail;
   }
@@ -51,7 +83,11 @@ async function request<T>(
     data = await resp.text();
   }
   if (!resp.ok) {
-    throw new ApiError(resp.status, data);
+    const detail =
+      data && typeof data === "object" && data !== null && "detail" in data
+        ? (data as { detail: unknown }).detail
+        : data;
+    throw new ApiError(resp.status, detail);
   }
   return data as T;
 }
@@ -62,8 +98,10 @@ export const api = {
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "POST", body }),
   // ---- User ----
-  getProfile: (chatId: number | null) =>
-    api.get<import("../types").UserProfile>("/api/user/profile", { chat_id: chatId }),
+  getProfile: (chatId?: number | null) =>
+    api.get<import("../types").UserProfile>("/api/user/profile", {
+      chat_id: chatId ?? undefined,
+    }),
   getMySubscription: () =>
     api.get<import("../types").SubscriptionInfo>("/api/subscriptions/me"),
   // ---- Games ----

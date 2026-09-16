@@ -48,7 +48,7 @@ export default function TTT() {
         if (e instanceof ApiError) {
           setError(e.detail?.toString?.() ?? e.message);
         } else {
-          setError(String(e));
+          setError(e instanceof Error ? e.message : String(e));
         }
         setCreating(false);
       });
@@ -108,7 +108,7 @@ export default function TTT() {
       const updated = await api.getRoom(room.id);
       setRoom(updated);
     } catch (e) {
-      const msg = e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : String(e);
+      const msg = e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : e instanceof Error ? e.message : String(e);
       hapticNotify("error");
       setError(msg);
       setTimeout(() => setError(null), 3000);
