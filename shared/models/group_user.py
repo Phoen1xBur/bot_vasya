@@ -96,7 +96,7 @@ class GroupUserOrm(Base):
             res = await session.execute(query)
             return int(res.scalar_one())
 
-@staticmethod
+    @staticmethod
     async def get_groups_user_by_telegram_chat_id(tg_chat_id: int) -> list["GroupUserOrm"]:
         async with async_session_factory() as session:
             query = (
