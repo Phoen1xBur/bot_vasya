@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     TOKEN: str
     API_ID: str = ""
     API_HASH: str = ""
+    # Публичный @username без @ (для лендинга и ссылок t.me)
+    BOT_USERNAME: str = ""
 
     # --- БД ---
     DB_HOST: str = "localhost"

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { getUrlParams, initTelegram, applyTheme, type PageName } from "./lib/telegram";
+import { getUrlParams, initTelegram, applyTheme, isInsideTelegram, isTelegramOnlyPage, type PageName } from "./lib/telegram";
+import OutsideTelegram from "./components/OutsideTelegram";
 import { useAppStore } from "./store/appStore";
 import { setMuted } from "./lib/sound";
 import LoadingScreen from "./components/LoadingScreen";
@@ -23,6 +24,7 @@ const pageTransition = {
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState<PageName>("profile");
+  const [blocked, setBlocked] = useState(false);
   const muted = useAppStore((s) => s.muted);
   const setTheme = useAppStore((s) => s.setTheme);
 
@@ -33,6 +35,9 @@ export default function App() {
     if (tg?.colorScheme) setTheme(tg.colorScheme);
     const params = getUrlParams();
     setPage(params.page);
+    if (isTelegramOnlyPage(params.page, params) && !isInsideTelegram()) {
+      setBlocked(true);
+    }
     const timer = setTimeout(() => setLoading(false), 1500);
     return () => clearTimeout(timer);
   }, []);
@@ -61,6 +66,10 @@ export default function App() {
         {loading ? (
           <motion.div key="loading" {...pageTransition}>
             <LoadingScreen />
+          </motion.div>
+        ) : blocked ? (
+          <motion.div key="outside" {...pageTransition}>
+            <OutsideTelegram />
           </motion.div>
         ) : (
           <motion.div key={page} {...pageTransition}>

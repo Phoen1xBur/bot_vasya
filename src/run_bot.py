@@ -69,7 +69,7 @@ async def start_bot() -> None:
     await init_bot_identity(bot)
     await bot.set_my_commands(settings.MY_COMMANDS)
     bot.default.parse_mode = "HTML"
-    await dp.start_polling(bot)
+    await dp.start_polling(bot, drop_pending_updates=True)
 
 
 async def start_bus_consumer() -> None:

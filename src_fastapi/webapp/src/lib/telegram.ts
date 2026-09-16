@@ -131,3 +131,17 @@ export function hapticSelection() {
     // ignore
   }
 }
+
+export function isInsideTelegram(): boolean {
+  const wa = window.Telegram?.WebApp;
+  if (!wa) return false;
+  // initData is empty outside a real Telegram WebApp session
+  return Boolean(wa.initData && wa.initData.length > 0);
+}
+
+export function isTelegramOnlyPage(page: PageName, params: UrlParams): boolean {
+  const gated: PageName[] = ["ttt", "roulette", "slots", "casino"];
+  if (gated.includes(page)) return true;
+  // any deep-link into a room is Telegram-only
+  return Boolean(params.room || params.game);
+}
