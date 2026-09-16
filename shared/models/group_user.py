@@ -54,6 +54,8 @@ class GroupUserOrm(Base):
             result = await session.execute(query)
             group_user = result.scalars().first()
             if group_user is None:
+                if "chat_member_status" not in kwargs or kwargs.get("chat_member_status") is None:
+                    kwargs["chat_member_status"] = ChatMemberStatus.MEMBER
                 group_user = GroupUserOrm(
                     user_id=user_id,
                     telegram_chat_id=tg_chat_id,

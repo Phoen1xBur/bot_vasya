@@ -50,11 +50,38 @@ async def ensure_group_user_from_message(message: Message) -> GroupUserOrm:
         raise ValueError("message.from_user is required")
     await TelegramChatOrm.insert_or_update_telegram_chat(message.chat.id)
     await UserOrm.insert_or_update_user(tg_user.id, tg_user)
-    await GroupUserOrm.insert_or_update_group_user(tg_user.id, message.chat.id)
+
+    status = ChatMemberStatus.MEMBER
+    try:
+        from run_bot import bot
+
+        member = await bot.get_chat_member(message.chat.id, tg_user.id)
+        status_map = {
+            "creator": ChatMemberStatus.OWNER,
+            "administrator": ChatMemberStatus.ADMINISTRATOR,
+            "member": ChatMemberStatus.MEMBER,
+            "restricted": ChatMemberStatus.RESTRICTED,
+            "left": ChatMemberStatus.LEFT,
+            "kicked": ChatMemberStatus.BANNED,
+        }
+        raw = getattr(getattr(member, "status", None), "value", None) or str(getattr(member, "status", "member"))
+        status = status_map.get(str(raw).lower(), ChatMemberStatus.MEMBER)
+    except Exception:
+        logger.debug(
+            "get_chat_member failed chat=%s user=%s; default MEMBER",
+            message.chat.id,
+            tg_user.id,
+            exc_info=True,
+        )
+
+    await GroupUserOrm.insert_or_update_group_user(
+        tg_user.id, message.chat.id, chat_member_status=status
+    )
     group_user = await GroupUserOrm.get_group_user(tg_user.id, message.chat.id)
     if group_user is None:
         raise RuntimeError(f"Failed to upsert GroupUser user={tg_user.id} chat={message.chat.id}")
     return group_user
+
 
 
 async def get_group_user(message: Message) -> GroupUserOrm:

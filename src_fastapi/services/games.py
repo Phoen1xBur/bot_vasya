@@ -471,7 +471,7 @@ async def _notify_ttt_finished(room: GameRoomOrm, winner_id: int | None, draw: b
 
         bus = await ensure_bus()
         await bus.publish(
-            "game.finished",
+            "api.game.finished",
             {"chat_id": int(room.chat_id), "result_text": text},
         )
     except Exception:
