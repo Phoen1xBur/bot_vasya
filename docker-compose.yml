@@ -57,8 +57,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    ports:
-      - "15672:15672"  # Web UI (dev)
+    # Management UI only for local/dev: docker compose run --service-ports ...
+    # ports:
+    #   - "15672:15672"
 
   api:
     build:
