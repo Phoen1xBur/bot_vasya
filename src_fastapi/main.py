@@ -109,7 +109,7 @@ def register_routers() -> None:
     app.include_router(games.router)
     app.include_router(ads.router)
     app.include_router(user.router)
-app.include_router(chats.router)
+    app.include_router(chats.router)
     app.include_router(admin.router)
     logger.info("API роутеры зарегистрированы")
 
