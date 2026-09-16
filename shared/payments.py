@@ -33,6 +33,12 @@ def _import_tbank():
     return _AsyncTKassaClient, _append_token
 
 
+
+def _tbank_http_client():
+    import httpx
+    return httpx.AsyncClient(verify=_settings.TBANK_SSL_VERIFY)
+
+
 def verify_webhook_token(payload: dict[str, Any]) -> bool:
     """Проверка подписи webhook от Т-Банка.
 
@@ -78,6 +84,7 @@ async def create_payment(
     async with AsyncTKassaClient(
         terminal_key=_settings.TBANK_TERMINAL_ID,
         password=_settings.TBANK_TERMINAL_PASSWORD,
+        client=_tbank_http_client(),
     ) as client:
         # Базовые параметры
         params_data = {
@@ -138,6 +145,7 @@ async def get_payment_status(order_id: str) -> dict[str, Any]:
     async with AsyncTKassaClient(
         terminal_key=_settings.TBANK_TERMINAL_ID,
         password=_settings.TBANK_TERMINAL_PASSWORD,
+        client=_tbank_http_client(),
     ) as client:
         try:
             result = await client.check_order(order_id)
@@ -162,6 +170,7 @@ async def cancel_payment(payment_id: str, amount: int) -> dict[str, Any]:
     async with AsyncTKassaClient(
         terminal_key=_settings.TBANK_TERMINAL_ID,
         password=_settings.TBANK_TERMINAL_PASSWORD,
+        client=_tbank_http_client(),
     ) as client:
         try:
             result = await client.payment_cancel(

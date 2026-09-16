@@ -89,6 +89,8 @@ class Settings(BaseSettings):
     TBANK_SUCCESS_URL: str = ""
     TBANK_FAIL_URL: str = ""
     TBANK_NOTIFICATION_URL: str = ""
+    # На серверах с корпоративным/self-signed MITM в цепочке — False
+    TBANK_SSL_VERIFY: bool = True
 
     # --- Админы (массив Telegram user_id) ---
     ADMIN_IDS: str = "[]"

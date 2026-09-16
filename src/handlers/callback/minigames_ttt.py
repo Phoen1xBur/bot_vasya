@@ -16,6 +16,7 @@ from shared.config import get_settings
 from shared.enums import ChatType, GameType
 from shared.models.game_room import GameRoomOrm
 from shared.redis_client import get_redis
+from aiogram.filters import BaseFilter
 from utils.filters import ChatTypeFilter
 
 router = Router(name=__name__)
@@ -29,6 +30,26 @@ def _room_key(chat_id: int) -> str:
 
 def _picking_key(chat_id: int) -> str:
     return f"mg:ttt:picking:{chat_id}"
+
+
+
+class TttPickingFilter(BaseFilter):
+    """Срабатывает только пока создатель выбирает оппонента (иначе глотает все group-сообщения)."""
+
+    async def __call__(self, message: Message) -> bool:
+        if not message.from_user:
+            return False
+        try:
+            raw = get_redis().hgetall(_picking_key(message.chat.id))
+        except Exception:
+            return False
+        if not raw:
+            return False
+        cid = raw.get("creator_id", raw.get(b"creator_id"))
+        if cid is None:
+            return False
+        cid_s = cid.decode() if isinstance(cid, bytes) else str(cid)
+        return str(message.from_user.id) == cid_s
 
 
 def _webapp_ttt_url(chat_id: int, room_id: str, target_id: int) -> str:
@@ -209,7 +230,7 @@ async def on_ttt_accept(callback: CallbackQuery):
         await callback.answer("Произошла ошибка", show_alert=True)
 
 
-@router.message(ChatTypeFilter(ChatType.GROUP, ChatType.SUPERGROUP))
+@router.message(ChatTypeFilter(ChatType.GROUP, ChatType.SUPERGROUP), TttPickingFilter())
 async def on_ttt_pick_opponent(message: Message, bot: Bot):
     """Пока создатель выбирает оппонента — ловим тег/reply."""
     if not message.from_user:
