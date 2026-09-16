@@ -9,6 +9,13 @@ ENV задаётся ДО импорта shared.*, чтобы get_settings() в�
 значения и shared.database не пытался создать postgres-движки.
 """
 import os
+import asyncio
+
+# Python 3.10+ / 3.14: pyrogram вызывает get_event_loop() при импорте.
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
 
 # --- Окружение ДО любого импорта shared.* ---
 os.environ.setdefault("TOKEN", "123:test:token")

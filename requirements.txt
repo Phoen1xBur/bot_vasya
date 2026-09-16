@@ -1,28 +1,28 @@
-# --- Telegram-бот ---
+# --- Telegram bot ---
 aiogram==3.27.0
 Pyrogram==2.0.106
 TgCrypto==1.2.5
 aiofiles==24.1.0
 
-# --- FastAPI (API-сервис) ---
+# --- FastAPI ---
 fastapi==0.116.1
 uvicorn==0.35.0
 starlette==0.47.2
 
-# --- БД ---
-SQLAlchemy==2.0.35
+# --- Database ---
+SQLAlchemy==2.0.54
 alembic==1.13.3
-asyncpg==0.29.0
-psycopg==3.2.2
-psycopg-binary==3.2.2
+asyncpg==0.31.0
+psycopg==3.2.13
+psycopg-binary==3.2.13
 
 # --- Redis ---
 redis==5.2.0
 
-# --- Шина сообщений (RabbitMQ) ---
+# --- Message bus (RabbitMQ) ---
 aio-pika==9.5.5
 
-# --- HTTP-клиент ---
+# --- HTTP clients ---
 httpx==0.28.1
 aiohttp==3.10.6
 
@@ -34,23 +34,24 @@ markovify==0.9.4
 vosk==0.3.45
 srt==3.5.3
 
-# --- Платежи (Т-Банк / Т-Касса) ---
+# --- Payments (T-Bank) ---
 tbank-securepay>=0.3.0
 
-# --- Конфиг/валидация ---
+# --- Config / validation ---
 pydantic==2.12.5
 pydantic-settings==2.5.2
 python-dotenv==1.0.1
 
-# --- Утилиты ---
+# --- Utils ---
 Unidecode==1.3.8
-python-dateutil==2.9.0.post2024
+python-dateutil==2.9.0.post0
 
-# --- Тесты ---
+# --- Tests ---
 pytest==8.3.4
 pytest-asyncio==0.24.0
+aiosqlite==0.21.0
 
-# --- Линтинг ---
+# --- Lint ---
 ruff==0.8.4
 black==24.10.0
 mypy==1.13.0

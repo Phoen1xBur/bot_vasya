@@ -45,8 +45,12 @@ def get_user_id_from_init_data(init_data: str) -> int:
 def get_user_profile_from_init_data(init_data: str) -> dict:
     try:
         parsed_data = parse_qs(init_data)
+        if "user" not in parsed_data:
+            return {}
         user_data = parsed_data.get("user", ["{}"])[0]
         d = json.loads(user_data)
+        if not isinstance(d, dict) or not d:
+            return {}
         return {
             "id": d.get("id"),
             "username": d.get("username"),

@@ -57,19 +57,24 @@ class GameRoomOrm(Base):
             await session.refresh(room)
             return room
 
+
     @staticmethod
-    async def get(room_id: str) -> "GameRoomOrm | None":
+    def _as_uuid(room_id: str | uuid.UUID) -> uuid.UUID:
+        return room_id if isinstance(room_id, uuid.UUID) else uuid.UUID(str(room_id))
+
+    @staticmethod
+    async def get(room_id: str | uuid.UUID) -> "GameRoomOrm | None":
         async with async_session_factory() as session:
             result = await session.execute(
-                select(GameRoomOrm).filter(GameRoomOrm.id == room_id)
+                select(GameRoomOrm).filter(GameRoomOrm.id == GameRoomOrm._as_uuid(room_id))
             )
             return result.scalars().first()
 
     @staticmethod
-    async def update(room_id: str, **kwargs) -> "GameRoomOrm | None":
+    async def update(room_id: str | uuid.UUID, **kwargs) -> "GameRoomOrm | None":
         async with async_session_factory() as session:
             result = await session.execute(
-                select(GameRoomOrm).filter(GameRoomOrm.id == room_id)
+                select(GameRoomOrm).filter(GameRoomOrm.id == GameRoomOrm._as_uuid(room_id))
             )
             room = result.scalars().first()
             if room is None:

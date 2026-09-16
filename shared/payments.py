@@ -85,12 +85,12 @@ async def create_payment(
             "order_id": order_id,
             "description": description,
         }
-        if _settings.TBANK_SUCCESS_URL:
-            params_data["SUCCESS_URL"] = _settings.TBANK_SUCCESS_URL
-        if _settings.TBANK_FAIL_URL:
-            params_data["FAILURL"] = _settings.TBANK_FAIL_URL
-        if _settings.TBANK_NOTIFICATION_URL:
-            params_data["NotificationURL"] = _settings.TBANK_NOTIFICATION_URL
+        if _settings.tbank_success_url:
+            params_data["SUCCESS_URL"] = _settings.tbank_success_url
+        if _settings.tbank_fail_url:
+            params_data["FAILURL"] = _settings.tbank_fail_url
+        if _settings.tbank_notification_url:
+            params_data["NotificationURL"] = _settings.tbank_notification_url
         if extra_data:
             params_data["DATA"] = extra_data
 
@@ -106,7 +106,7 @@ async def create_payment(
                 )
             )
             # Если нужны доп. поля (URL, DATA) — делаем сырой post с подписью
-            if _settings.TBANK_NOTIFICATION_URL or extra_data or _settings.TBANK_SUCCESS_URL:
+            if _settings.tbank_notification_url or extra_data or _settings.tbank_success_url:
                 raw = await client.post(
                     "Init",
                     params_data,

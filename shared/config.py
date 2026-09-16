@@ -79,11 +79,13 @@ class Settings(BaseSettings):
     VOSK_ENABLED: bool = False
     VOSK_MODEL_PATH: str = "src/utils/models/vosk/vosk-model-ru-0.42"
 
-    # --- T-Bank Acquiring (Т-Касса) ---
+    # --- T-Bank Acquiring ---
+    # Достаточно WEBAPP_BASE_URL: Success/Fail/Notification собираются сами.
+    # Эти три поля — только ручной override (оставьте пустыми в обычном случае).
     TBANK_TERMINAL_ID: str = ""
     TBANK_TERMINAL_PASSWORD: str = ""
-    TBANK_SUCCESS_URL: str = "https://t.me/"
-    TBANK_FAIL_URL: str = "https://t.me/"
+    TBANK_SUCCESS_URL: str = ""
+    TBANK_FAIL_URL: str = ""
     TBANK_NOTIFICATION_URL: str = ""
 
     # --- Админы (массив Telegram user_id) ---
@@ -148,6 +150,31 @@ class Settings(BaseSettings):
             BotCommand(command="donate", description="Поддержать проект"),
             BotCommand(command="advertise", description="Подать рекламу"),
         ]
+
+
+    @property
+    def tbank_success_url(self) -> str:
+        """Куда банк вернёт пользователя после успешной оплаты (страница WebApp)."""
+        if self.TBANK_SUCCESS_URL:
+            return self.TBANK_SUCCESS_URL
+        base = self.WEBAPP_BASE_URL.rstrip("/")
+        return f"{base}/webapp/index.html?page=payment&status=success"
+
+    @property
+    def tbank_fail_url(self) -> str:
+        """Куда банк вернёт пользователя после неуспешной оплаты."""
+        if self.TBANK_FAIL_URL:
+            return self.TBANK_FAIL_URL
+        base = self.WEBAPP_BASE_URL.rstrip("/")
+        return f"{base}/webapp/index.html?page=payment&status=fail"
+
+    @property
+    def tbank_notification_url(self) -> str:
+        """Серверный webhook банка (не страница для человека)."""
+        if self.TBANK_NOTIFICATION_URL:
+            return self.TBANK_NOTIFICATION_URL
+        base = self.WEBAPP_BASE_URL.rstrip("/")
+        return f"{base}/api/payments/webhook"
 
     @property
     def DATABASE_URL_asyncpg(self) -> str:
