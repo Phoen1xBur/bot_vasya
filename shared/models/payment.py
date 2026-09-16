@@ -77,7 +77,7 @@ class PaymentOrm(Base):
 
     @staticmethod
     async def get_last_confirmed_subscription(user_id: int) -> "PaymentOrm | None":
-        """Последний успешный платёж подписки пользователя (для refund)."""
+        """Последний успешный родительский платёж подписки (не renew) для UI/refund."""
         async with _session() as session:
             result = await session.execute(
                 select(PaymentOrm)
@@ -85,11 +85,18 @@ class PaymentOrm(Base):
                     PaymentOrm.user_id == user_id,
                     PaymentOrm.payment_type == PaymentType.SUBSCRIPTION,
                     PaymentOrm.status == PaymentStatus.CONFIRMED,
+                    PaymentOrm.fulfilled.is_(True),
                 )
                 .order_by(PaymentOrm.created_at.desc())
-                .limit(1)
             )
-            return result.scalars().first()
+            for payment in result.scalars().all():
+                meta = payment.meta or {}
+                if meta.get("renew"):
+                    continue
+                if str(payment.order_id).startswith("renew_"):
+                    continue
+                return payment
+            return None
 
     @staticmethod
     async def mark_fulfilled(order_id: str) -> bool:
