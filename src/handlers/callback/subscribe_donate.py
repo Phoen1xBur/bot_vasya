@@ -83,7 +83,7 @@ async def on_cancel_subscription(callback: CallbackQuery):
     user_id = callback.from_user.id
     cancelled = await SubscriptionOrm.cancel_auto_renew(user_id)
     if not cancelled:
-        await callback.answer("У вас нет активной подписки", show_alert=True)
+        await callback.answer("Нечего отменять: активной подписки нет. Выберите тариф выше.", show_alert=True)
         return
     sub = await SubscriptionOrm.get_by_user(user_id)
     expires = sub.expires_at.strftime("%d.%m.%Y") if sub and sub.expires_at else "—"

@@ -38,6 +38,13 @@ export default function Roulette() {
   const [result, setResult] = useState<{ number: number; color: string } | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [betAmount, setBetAmount] = useState("10");
+  const [balance, setBalance] = useState<number | null>(null);
+  const refreshBalance = async () => {
+    try {
+      const b = await api.getBalance(chatId ?? myId ?? undefined);
+      setBalance(b.money);
+    } catch { /* ignore */ }
+  };
   const [betType, setBetType] = useState<"color" | "number" | "parity">("color");
   const [betValue, setBetValue] = useState<string>("red");
   const [numValue, setNumValue] = useState("0");
@@ -45,6 +52,7 @@ export default function Roulette() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    void refreshBalance();
     api.createRoom({ game_type: "roulette", chat_id: chatId ?? myId, bet: 0 })
       .then((r) => { setRoom(r as RoomState); setCreating(false); })
       .catch((e) => {
@@ -53,6 +61,17 @@ export default function Roulette() {
       });
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
+
+  useEffect(() => {
+    if (!room || room.status === "finished" || room.status === "cancelled") return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const fresh = await api.getRoom(room.id);
+        setRoom(fresh);
+      } catch { /* expired */ }
+    }, 2000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [room?.id, room?.status]);
 
   const handleSpin = async () => {
     if (!room || spinning) return;
@@ -77,7 +96,7 @@ export default function Roulette() {
     haptic("medium");
 
     const betValueFinal = betType === "number" ? parseInt(numValue) : betValue;
-    const bets: BetEntry[] = [{ type: betType, value: betValueFinal, amount }];
+    const bets = [{ type: betType, value: betValueFinal, amount, user_id: myId }];
 
     try {
       const res = await api.roomAction(room.id, { bets }) as { number: number; color: string; results: Array<{ user_id: number; bet: number; won: number; won_net: number }> };
@@ -94,6 +113,11 @@ export default function Roulette() {
         hapticNotify("warning");
         soundLose();
       }
+      void refreshBalance();
+      try {
+        const fresh = await api.getRoom(room.id);
+        setRoom(fresh);
+      } catch { /* finished */ }
     } catch (e) {
       const msg = e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -125,6 +149,10 @@ export default function Roulette() {
         className="text-center"
       >
         <h1 className="text-3xl font-black gradient-text">РУЛЕТКА</h1>
+        <p className="mt-2 text-sm font-semibold text-neon-purple">
+          Баланс: {balance === null ? "…" : balance} 🪙
+        </p>
+        <p className="text-white/40 text-xs mt-1">До 8 игроков из чата · ставки видны за столом</p>
       </motion.div>
 
       {error && (
@@ -136,6 +164,36 @@ export default function Roulette() {
           {error}
         </motion.div>
       )}
+
+      {(() => {
+        const st = (room?.state || {}) as { players?: Array<{ user_id: number; bet: number }>; bets?: Array<{ user_id: number; type: string; value: string | number; amount: number }> };
+        const players = st.players || [];
+        const bets = st.bets || [];
+        if (!players.length && !bets.length) return null;
+        return (
+          <GlassCard className="w-full max-w-sm text-sm">
+            <p className="font-semibold mb-2 text-white/80">За столом</p>
+            {players.length > 0 && (
+              <ul className="space-y-1 mb-2 text-white/60">
+                {players.map((p) => (
+                  <li key={p.user_id}>
+                    Игрок {p.user_id === myId ? "вы" : p.user_id}: банк {p.bet} 🪙
+                  </li>
+                ))}
+              </ul>
+            )}
+            {bets.length > 0 && (
+              <ul className="space-y-1 text-white/60">
+                {bets.map((b, idx) => (
+                  <li key={idx}>
+                    {b.user_id === myId ? "Вы" : `Игрок ${b.user_id}`}: {b.type}={String(b.value)} на {b.amount} 🪙
+                  </li>
+                ))}
+              </ul>
+            )}
+          </GlassCard>
+        );
+      })()}
 
       {/* Wheel */}
       <GlassCard glow className="w-full max-w-sm flex flex-col items-center py-6">

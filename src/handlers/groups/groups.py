@@ -36,6 +36,45 @@ router.message.filter(
 
 _settings = get_settings()
 
+
+async def _open_webapp_for_user(message: Message, page: str, title: str) -> None:
+    """В группе web_app-кнопки нельзя — шлём в ЛС или deep-link."""
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    from aiogram.utils.deep_linking import create_start_link
+    from run_bot import bot
+
+    url = f"{_settings.WEBAPP_BASE_URL}/webapp/?page={page}"
+    if message.chat.id == message.from_user.id:
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text=title, web_app=WebAppInfo(url=url))]]
+        )
+        await message.answer(f"{title}:", reply_markup=kb)
+        return
+    sent = False
+    try:
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text=title, web_app=WebAppInfo(url=url))]]
+        )
+        await bot.send_message(message.from_user.id, f"{title} — откройте Mini App:", reply_markup=kb)
+        sent = True
+    except Exception:
+        pass
+    if sent:
+        await message.answer("Откройте личные сообщения от бота.")
+        return
+    # compact deep link f=advertise|casino|admin
+    short = {"advertise": "ad", "casino": "casino", "admin": "admin", "profile": "profile"}.get(page, page[:8])
+    payload = f"f={short}"
+    deep = await create_start_link(bot, payload, encode=True)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="Открыть в ЛС с ботом", url=deep)]]
+    )
+    await message.answer(
+        "Напишите боту /start в личке, затем нажмите кнопку:",
+        reply_markup=kb,
+    )
+
+
 messages_rules = [
     {
         "role": "system",
@@ -258,8 +297,7 @@ async def donate_cmd(message: Message):
 
 @router.message(Command("advertise"))
 async def advertise_cmd(message: Message):
-    keyboard = build_inline_kb_webapp_advertise()
-    await message.answer("📢 Подача рекламы. Откройте форму:", reply_markup=keyboard)
+    await _open_webapp_for_user(message, "advertise", "📢 Подать рекламу")
 
 
 @router.message(Command("admin_panel"))
@@ -267,16 +305,12 @@ async def admin_panel_cmd(message: Message):
     if message.from_user.id not in _settings.ADMIN_ID_SET:
         await message.answer("Эта команда доступна только администраторам")
         return
-    keyboard = build_inline_kb_webapp_admin()
-    await message.answer("🛠 Админ-панель:", reply_markup=keyboard)
+    await _open_webapp_for_user(message, "admin", "🛠 Админ-панель")
 
 
 @router.message(Command("casino"))
 async def casino(message: Message):
-    from keyboards.inline_kb_webapp_casino import build_inline_kb_webapp_casino
-
-    keyboard = build_inline_kb_webapp_casino()
-    await message.answer("Вход в казино", reply_markup=keyboard)
+    await _open_webapp_for_user(message, "casino", "🎰 Открыть казино")
 
 
 @router.message(F.text[0] != "/")

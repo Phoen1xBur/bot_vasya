@@ -101,38 +101,26 @@ async def create_payment(
         if extra_data:
             params_data["DATA"] = extra_data
 
-        # Используем payment_init для плоских параметров, post — для вложенных DATA
-        from tbank_securepay import PaymentInitParams  # type: ignore
-
+        # Один Init со всеми полями (двойной Init с тем же order_id ломает PaymentURL)
         try:
-            result = await client.payment_init(
-                PaymentInitParams(
-                    amount=amount,
-                    order_id=order_id,
-                    description=description,
+            raw = await client.post("Init", params_data)
+            payment_url = raw.get("PaymentURL") or raw.get("PaymentUrl")
+            if not payment_url:
+                pay_log.error(
+                    "Init без PaymentURL order=%s success=%s error=%s message=%s raw=%s",
+                    order_id,
+                    raw.get("Success"),
+                    raw.get("ErrorCode"),
+                    raw.get("Message"),
+                    raw,
                 )
-            )
-            # Если нужны доп. поля (URL, DATA) — делаем сырой post с подписью
-            if _settings.tbank_notification_url or extra_data or _settings.tbank_success_url:
-                raw = await client.post(
-                    "Init",
-                    params_data,
-                )
-                return {
-                    "success": raw.get("Success", False),
-                    "payment_url": raw.get("PaymentURL"),
-                    "payment_id": str(raw.get("PaymentId")) if raw.get("PaymentId") else None,
-                    "order_id": raw.get("OrderId"),
-                    "status": raw.get("Status"),
-                    "raw": raw,
-                }
             return {
-                "success": result.success,
-                "payment_url": result.payment_url,
-                "payment_id": result.payment_id,
-                "order_id": result.order_id,
-                "status": result.status,
-                "raw": result.raw,
+                "success": bool(raw.get("Success", False)),
+                "payment_url": payment_url,
+                "payment_id": str(raw.get("PaymentId")) if raw.get("PaymentId") else None,
+                "order_id": raw.get("OrderId") or order_id,
+                "status": raw.get("Status"),
+                "raw": raw,
             }
         except Exception:
             pay_log.exception("Ошибка создания платежа order=%s", order_id)

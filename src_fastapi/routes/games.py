@@ -40,10 +40,24 @@ async def create_room(body: dict = Body(...), profile: dict = Depends(require_te
     bet = int(body.get("bet", 0))
     target_id = body.get("target_id")
 
-    # Проверка, что нет активной комнаты
+    # Активная комната: ту же игру переиспользуем; слоты/рулетку другого типа закрываем
     existing = await GameRoomOrm.get_active_for_user(profile["id"])
     if existing:
-        raise HTTPException(status_code=409, detail="У вас уже есть активная игра")
+        same_type = existing.game_type == game_type
+        if same_type:
+            logger.info(
+                "create_room: reuse active room=%s type=%s user=%s",
+                existing.id, game_type_str, profile["id"],
+            )
+            return await game_service.get_room_state_view(existing)
+        if existing.game_type in (GameType.SLOTS, GameType.ROULETTE):
+            await GameRoomOrm.update(str(existing.id), status=GameRoomStatus.CANCELLED)
+            logger.info(
+                "create_room: cancelled stale %s room=%s for user=%s",
+                existing.game_type, existing.id, profile["id"],
+            )
+        else:
+            raise HTTPException(status_code=409, detail="У вас уже есть активная игра")
 
     # Для TTT нужен target_id
     if game_type == GameType.TTT and not target_id:

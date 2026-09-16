@@ -108,24 +108,27 @@ async def on_select_minigame(callback: CallbackQuery):
         except Exception:
             logger.warning("Не удалось отправить WebApp в ЛС user=%s", creator_id, exc_info=True)
 
+        deep_link = await create_start_link(
+            bot, _mg_start_payload(chat.id, f"minigame_{page}"), encode=True
+        )
+        rows = [[InlineKeyboardButton(text="🎮 Открыть игру в ЛС", url=deep_link)]]
+        if page == "roulette":
+            # До 8 игроков из чата — общая кнопка в чате
+            rows.append(
+                [InlineKeyboardButton(text="🎰 Присоединиться к рулетке", url=deep_link)]
+            )
+        kb = InlineKeyboardMarkup(inline_keyboard=rows)
         if sent_dm:
-            await callback.message.edit_text(
-                "Игра готова! Откройте личные сообщения от бота."
+            text = (
+                "Игра готова! Вам написал бот в ЛС."
+                + (" Другие из чата могут присоединиться кнопкой ниже." if page == "roulette" else "")
             )
         else:
-            deep_link = await create_start_link(
-                bot, _mg_start_payload(chat.id, f"minigame_{page}"), encode=True
+            text = (
+                "Начните диалог с ботом (/start в ЛС), затем откройте игру кнопкой."
+                + (" Кнопка ниже — для всех из чата." if page == "roulette" else "")
             )
-            kb = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="🎮 Открыть игру в ЛС", url=deep_link)]
-                ]
-            )
-            await callback.message.edit_text(
-                "Не удалось написать вам в ЛС (начните диалог с ботом командой /start), "
-                "затем нажмите кнопку:",
-                reply_markup=kb,
-            )
+        await callback.message.edit_text(text, reply_markup=kb)
         await callback.answer()
     except Exception:
         logger.exception("Ошибка выбора мини-игры")

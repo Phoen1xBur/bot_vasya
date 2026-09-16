@@ -43,6 +43,9 @@ async def start(message: Message, command: CommandObject, bot: Bot):
                     "slots": "minigame_slots",
                     "profile": "profile",
                     "casino": "casino",
+                    "ad": "advertise",
+                    "advertise": "advertise",
+                    "admin": "admin",
                 }.get(short, short if short.startswith("minigame_") else f"minigame_{short}")
 
             match request_func, chat_id:
@@ -51,6 +54,14 @@ async def start(message: Message, command: CommandObject, bot: Bot):
                     await message.answer(answer)
                 case "casino", _:
                     await message.answer("Казино", reply_markup=build_inline_kb_webapp_casino())
+                case "advertise", _:
+                    from keyboards.inline_kb_webapp_casino import build_inline_kb_webapp_advertise
+                    await message.answer("Реклама", reply_markup=build_inline_kb_webapp_advertise())
+                case "admin", _:
+                    if message.from_user.id not in _settings.ADMIN_ID_SET:
+                        await message.answer("Только для администраторов")
+                    else:
+                        await message.answer("Админ-панель", reply_markup=build_inline_kb_webapp_admin())
                 case "minigame_ttt", chat_id:
                     url = f"{_settings.WEBAPP_BASE_URL}/webapp/?page=ttt&chat_id={chat_id}"
                     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Играть в крестики-нолики", web_app=WebAppInfo(url=url))]])

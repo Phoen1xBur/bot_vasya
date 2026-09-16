@@ -31,9 +31,19 @@ export default function Slots() {
   const [result, setResult] = useState<{ won: number; bet: number; net: number } | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [betAmount, setBetAmount] = useState("10");
+  const [fastSpin, setFastSpin] = useState(false);
+  const [balance, setBalance] = useState<number | null>(null);
   const spinRef = useRef(false);
 
+  const refreshBalance = async () => {
+    try {
+      const b = await api.getBalance(chatId ?? myId ?? undefined);
+      setBalance(b.money);
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => {
+    void refreshBalance();
     api.createRoom({ game_type: "slots", chat_id: chatId ?? myId, bet: 0 })
       .then((r) => { setRoom(r as RoomState); setCreating(false); })
       .catch((e) => {
@@ -53,18 +63,25 @@ export default function Slots() {
     soundSpin();
     haptic("medium");
 
-    // Animate reels spinning
-    let ticks = 0;
+    const tickMs = fastSpin ? 50 : 90;
+    const minMs = fastSpin ? 400 : 1700;
+    const started = Date.now();
     const spinInterval = setInterval(() => {
-      setReels([SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)], SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)], SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]]);
+      setReels([
+        SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)],
+        SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)],
+        SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)],
+      ]);
       soundClick();
-      ticks++;
-    }, 80);
+    }, tickMs);
 
     try {
       const res = await api.roomAction(room.id, { bet }) as { reels: string[]; won: number; bet: number; net: number };
+      const left = minMs - (Date.now() - started);
+      if (left > 0) await new Promise((r) => setTimeout(r, left));
       clearInterval(spinInterval);
       setReels(res.reels);
+      void refreshBalance();
       setResult({ won: res.won, bet: res.bet, net: res.net });
       if (res.won > 0) {
         hapticNotify("success");
@@ -107,6 +124,9 @@ export default function Slots() {
       >
         <h1 className="text-3xl font-black gradient-text">СЛОТЫ</h1>
         <p className="text-white/50 text-xs mt-1">3 в ряд = джекпот!</p>
+        <p className="mt-2 text-sm font-semibold text-neon-purple">
+          Баланс: {balance === null ? "…" : balance} 🪙
+        </p>
       </motion.div>
 
       {error && (
@@ -188,8 +208,17 @@ export default function Slots() {
           value={betAmount}
           onChange={(e) => { setBetAmount(e.target.value); haptic("light"); }}
           min="1"
-          className="w-full glass rounded-lg px-4 py-3 text-lg font-bold mb-4 outline-none focus:ring-2 focus:ring-neon-purple"
+          className="w-full glass rounded-lg px-4 py-3 text-lg font-bold mb-3 outline-none focus:ring-2 focus:ring-neon-purple"
         />
+        <label className="flex items-center gap-2 mb-4 text-sm text-white/70 select-none">
+          <input
+            type="checkbox"
+            checked={fastSpin}
+            onChange={(e) => { setFastSpin(e.target.checked); haptic("light"); }}
+            className="rounded accent-purple-500"
+          />
+          Быстрый прокрут
+        </label>
         <NeonButton
           variant="purple"
           size="lg"

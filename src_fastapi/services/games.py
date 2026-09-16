@@ -139,14 +139,27 @@ async def roulette_spin(room: GameRoomOrm, user_id: int, action: dict) -> dict:
         raise ValueError("Крутить может только создатель стола")
 
     state = room.state or {}
-    bets: list[dict] = action.get("bets", state.get("bets", []))
+    incoming = action.get("bets", [])
+    # Нормализуем ставки и пишем в state (видно другим игрокам)
+    normalized = []
+    for bet in incoming:
+        normalized.append({
+            "user_id": bet.get("user_id") or user_id,
+            "type": bet.get("type"),
+            "value": bet.get("value"),
+            "amount": int(bet.get("amount", 0)),
+        })
+    if normalized:
+        state["bets"] = (state.get("bets") or []) + normalized
+        await GameRoomOrm.update(str(room.id), state=state)
+    bets: list[dict] = state.get("bets") or normalized
     number = random.choice(ROULETTE_NUMBERS)
     color = _number_color(number)
 
     # Выплаты
     payouts: list[dict] = []
     for bet in bets:
-        uid = bet.get("user_id")
+        uid = bet.get("user_id") or user_id
         btype = bet.get("type")
         bval = bet.get("value")
         amount = int(bet.get("amount", 0))
