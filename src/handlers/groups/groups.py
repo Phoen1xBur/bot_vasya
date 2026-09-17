@@ -28,6 +28,28 @@ from handlers import func
 from handlers.command import CommandCat
 
 router = Router(name=__name__)
+
+# Min seconds between unsolicited (chance) replies in one chat — cuts spam.
+REPLY_COOLDOWN_SEC = 15 * 60
+
+
+def _reply_cooldown_key(chat_id: int) -> str:
+    return f"tg_chat_reply_cd:{chat_id}"
+
+
+def _under_reply_cooldown(chat_id: int) -> bool:
+    try:
+        return bool(get_redis().get(_reply_cooldown_key(chat_id)))
+    except Exception:
+        return False
+
+
+def _arm_reply_cooldown(chat_id: int) -> None:
+    try:
+        get_redis().set(_reply_cooldown_key(chat_id), "1", ex=REPLY_COOLDOWN_SEC)
+    except Exception:
+        pass
+
 logger = logging.getLogger(__name__)
 router.message.filter(
     ChatTypeFilter(ChatType.GROUP, ChatType.SUPERGROUP),
@@ -386,6 +408,8 @@ async def echo(message: Message, chat_settings: TelegramChatOrm | None):
         else:
             messages = [msg[0] for msg in msg_from_db]
             answer = generate_text(messages)
+        if not answer:
+            return
         await message.answer(answer)
         return
 
@@ -401,6 +425,8 @@ async def echo(message: Message, chat_settings: TelegramChatOrm | None):
         except Exception:
             pass
     if random.randint(1, 100) <= int(chance):
+        if _under_reply_cooldown(message.chat.id):
+            return
         msg_from_db = await MessageOrm.get_messages(message.chat.id)
         if not _enough_context(msg_from_db):
             return
@@ -410,4 +436,7 @@ async def echo(message: Message, chat_settings: TelegramChatOrm | None):
         else:
             messages = [msg[0] for msg in msg_from_db]
             answer = generate_text(messages)
+        if not answer:
+            return
         await message.answer(answer)
+        _arm_reply_cooldown(message.chat.id)
