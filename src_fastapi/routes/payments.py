@@ -91,15 +91,12 @@ async def init_payment(profile: dict = Depends(require_telegram_user), body: dic
     # Создаём платёж в Т-Банке
     try:
         # Подписка: родительский рекуррентный Init (карта → RebillId)
-        recurrent = payment_type == "subscription"
+        # Recurrent temporarily disabled (terminal Charge blocked / bank UX pending).
         result = await create_payment(
             amount=amount,
             order_id=order_id,
             description=description,
             extra_data={"user_id": str(user_id), "payment_type": payment_type},
-            customer_key=str(user_id) if recurrent else None,
-            recurrent=recurrent,
-            operation_initiator_type="1" if recurrent else None,
         )
     except Exception as e:
         pay_log.exception("Ошибка создания платежа %s", order_id)
@@ -191,6 +188,42 @@ async def payment_webhook(request: Request):
     return {"ok": True, "status": tb_status}
 
 
+
+async def _notify_admins_payment(payment: PaymentOrm, extra: str = "") -> None:
+    """DM admins about successful subscription/donation."""
+    try:
+        from shared.messaging import get_bus
+
+        bus = get_bus()
+        amount_rub = payment.amount / 100.0
+        ptype = (
+            payment.payment_type.value
+            if hasattr(payment.payment_type, "value")
+            else str(payment.payment_type)
+        )
+        text = (
+            f"Платёж: {ptype}\n"
+            f"User: {payment.user_id}\n"
+            f"Сумма: {amount_rub:.2f} ₽\n"
+            f"Order: {payment.order_id}"
+        )
+        if extra:
+            text += f"\n{extra}"
+        await bus.publish(
+            "api.payment.received",
+            {
+                "admin_ids": list(_settings.ADMIN_ID_SET),
+                "text": text,
+                "user_id": payment.user_id,
+                "order_id": payment.order_id,
+                "amount": payment.amount,
+                "payment_type": ptype,
+            },
+        )
+    except Exception:
+        pay_log.exception("notify admins failed order=%s", payment.order_id)
+
+
 async def _fulfill_payment(payment: PaymentOrm, payload: dict) -> None:
     """Выдача товара в зависимости от типа платежа."""
     user_id = payment.user_id
@@ -213,6 +246,7 @@ async def _fulfill_payment(payment: PaymentOrm, payload: dict) -> None:
                 recurring_key=recurring,
                 auto_renew=bool(recurring),
             )
+            await _notify_admins_payment(payment, extra=f"tier={tier.value}")
             pay_log.info("Подписка %s активирована для user=%s", tier.value, user_id)
 
         elif payment.payment_type == PaymentType.DONATION:
@@ -223,6 +257,7 @@ async def _fulfill_payment(payment: PaymentOrm, payload: dict) -> None:
                 message=meta.get("message"),
                 public=meta.get("public", False),
             )
+            await _notify_admins_payment(payment)
             pay_log.info("Донат %s копеек от user=%s", payment.amount, user_id)
             # Бонус донатеру: +1000 васякоинов (через бота по событию) —
             # здесь только запись; бот начисляет по уведомлению через шину.

@@ -35,13 +35,11 @@ async def _background_tasks():
     """Фоновые задачи: продление подписок, очистка комнат, expire."""
     from shared.models.game_room import GameRoomOrm
     from shared.models.subscription import SubscriptionOrm
-    from shared.subscription_renewal import process_subscription_renewals
+        # Recurrent disabled: do not import/run Charge renewals
 
     while True:
         try:
-            renew_stats = await process_subscription_renewals()
-            if renew_stats.get("tried"):
-                logger.info("Subscription renewals: %s", renew_stats)
+            # renewals disabled
             rooms = await GameRoomOrm.expire_overdue()
             if rooms:
                 logger.debug("Просроченных комнат очищено: %s", rooms)

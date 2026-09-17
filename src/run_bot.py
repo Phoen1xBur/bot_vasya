@@ -96,6 +96,8 @@ async def start_bus_consumer() -> None:
                 await _handle_ad_send(payload)
             elif routing_key == "game.finished" or routing_key.endswith(".game.finished"):
                 await _handle_game_finished(payload)
+            elif routing_key == "payment.received" or routing_key.endswith(".payment.received"):
+                await _handle_payment_received(payload)
 
         await bus.consume(queue_name="vasya.bot", binding_keys=["api.#"], handler=on_event)
     except Exception:
@@ -113,6 +115,24 @@ async def _handle_ad_send(payload: dict) -> None:
             await bot.send_message(chat_id, message)
         except Exception:
             logger.warning("Не удалось отправить рекламу в чат %s", chat_id)
+
+
+
+async def _handle_payment_received(payload: dict) -> None:
+    """DM admins about donation/subscription."""
+    text = payload.get("text") or "Платёж получен"
+    admin_ids = payload.get("admin_ids") or []
+    if not admin_ids:
+        try:
+            from shared.config import get_settings
+            admin_ids = list(get_settings().ADMIN_ID_SET)
+        except Exception:
+            admin_ids = []
+    for admin_id in admin_ids:
+        try:
+            await bot.send_message(int(admin_id), text)
+        except Exception:
+            logger.warning("payment notify failed for admin %s", admin_id)
 
 
 async def _handle_game_finished(payload: dict) -> None:
