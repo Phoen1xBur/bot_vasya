@@ -139,6 +139,51 @@ class SubscriptionOrm(Base):
             return sub
 
 
+
+    @staticmethod
+    async def admin_grant(
+        user_id: int,
+        tier: SubscriptionTier,
+        expires_at: datetime,
+        auto_renew: bool = False,
+    ) -> "SubscriptionOrm":
+        """Админская выдача/продление подписки до конкретной даты (без оплаты)."""
+        if expires_at <= datetime.now():
+            raise ValueError("expires_at должна быть в будущем")
+        if tier == SubscriptionTier.FREE:
+            raise ValueError("Нельзя выдать FREE как платную подписку")
+        existing = await SubscriptionOrm.get_by_user(user_id)
+        now = datetime.now()
+        async with async_session_factory() as session:
+            if existing:
+                sub = await session.get(SubscriptionOrm, existing.id)
+                sub.tier = tier
+                sub.status = SubscriptionStatus.ACTIVE
+                sub.auto_renew = auto_renew
+                sub.recurring_key = None
+                if not sub.started_at:
+                    sub.started_at = now
+                # не укорачиваем уже оплаченный срок без нужды
+                if sub.expires_at and sub.expires_at > expires_at and sub.status == SubscriptionStatus.ACTIVE:
+                    pass
+                sub.expires_at = expires_at
+                await session.commit()
+                await session.refresh(sub)
+                return sub
+            sub = SubscriptionOrm(
+                user_id=user_id,
+                tier=tier,
+                status=SubscriptionStatus.ACTIVE,
+                auto_renew=auto_renew,
+                recurring_key=None,
+                started_at=now,
+                expires_at=expires_at,
+            )
+            session.add(sub)
+            await session.commit()
+            await session.refresh(sub)
+            return sub
+
     @staticmethod
     async def force_cancel(sub_id: int) -> "SubscriptionOrm | None":
         """Немедленно отменить подписку (admin): status=CANCELLED, auto_renew=False, clear recurring."""

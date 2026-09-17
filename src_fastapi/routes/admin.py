@@ -4,6 +4,7 @@
 """
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -291,3 +292,162 @@ async def cancel_and_refund_subscription(
         "idempotent": already_cancelled and refund_skipped in ("already_refunded", "no_confirmed_payment", "no_payment_id"),
     }
 
+
+async def _resolve_target_user(body: dict) -> tuple[int, str | None]:
+    """Resolve telegram user by user_id or username. Returns (user_id, username)."""
+    from shared.models.user import UserOrm
+
+    raw_id = body.get("user_id") or body.get("telegram_id")
+    username = body.get("username")
+    if isinstance(username, str):
+        username = username.strip().lstrip("@") or None
+
+    if raw_id is not None and str(raw_id).strip() != "":
+        try:
+            user_id = int(raw_id)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="user_id должен быть числом")
+        if user_id <= 0:
+            raise HTTPException(status_code=400, detail="user_id должен быть положительным")
+        user = await UserOrm.get_user_by_id(user_id)
+        return user_id, (user.username if user else username)
+
+    if username:
+        user = await UserOrm.get_by_username(username)
+        if user is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Пользователь @{username} не найден в БД бота",
+            )
+        return int(user.user_id), user.username
+
+    raise HTTPException(status_code=400, detail="Укажите user_id или username")
+
+
+@router.post("/grant/subscription")
+async def grant_subscription(
+    body: dict = Body(...), profile: dict = Depends(require_admin_user)
+):
+    """Выдать VIP/Premium/Elite до даты expires_at (ISO) или на days дней."""
+    from datetime import timedelta
+
+    from shared.enums import SubscriptionTier
+    from shared.models.subscription import SubscriptionOrm
+
+    user_id, username = await _resolve_target_user(body)
+    tier_raw = str(body.get("tier") or "").strip().lower()
+    tier_map = {
+        "vip": SubscriptionTier.VIP,
+        "premium": SubscriptionTier.PREMIUM,
+        "elite": SubscriptionTier.ELITE,
+    }
+    if tier_raw not in tier_map:
+        raise HTTPException(status_code=400, detail="tier: vip | premium | elite")
+    tier = tier_map[tier_raw]
+
+    expires_raw = body.get("expires_at") or body.get("end_date")
+    days = body.get("days")
+    if expires_raw:
+        try:
+            expires_at = datetime.fromisoformat(
+                str(expires_raw).replace("Z", "+00:00")
+            ).replace(tzinfo=None)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="expires_at: ожидается ISO-дата")
+    elif days is not None:
+        try:
+            days_i = int(days)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="days должен быть числом")
+        if days_i < 1 or days_i > 3650:
+            raise HTTPException(status_code=400, detail="days: 1..3650")
+        expires_at = datetime.now().replace(microsecond=0) + timedelta(days=days_i)
+    else:
+        raise HTTPException(status_code=400, detail="Укажите expires_at или days")
+
+    try:
+        sub = await SubscriptionOrm.admin_grant(
+            user_id=user_id,
+            tier=tier,
+            expires_at=expires_at,
+            auto_renew=bool(body.get("auto_renew", False)),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    logger.info(
+        "ADMIN_AUDIT grant_subscription admin=%s target=%s(@%s) tier=%s expires=%s",
+        profile["id"],
+        user_id,
+        username,
+        tier.value,
+        expires_at.isoformat(),
+    )
+    return {
+        "ok": True,
+        "user_id": user_id,
+        "username": username,
+        "tier": tier.value,
+        "expires_at": sub.expires_at.isoformat() if sub.expires_at else None,
+        "subscription_id": sub.id,
+    }
+
+
+@router.post("/grant/coins")
+async def grant_coins(body: dict = Body(...), profile: dict = Depends(require_admin_user)):
+    """Начислить (или списать) васякоины пользователю в указанном чате."""
+    from shared.models.chat import TelegramChatOrm
+    from shared.models.group_user import GroupUserOrm
+    from shared.models.user import UserOrm
+
+    user_id, username = await _resolve_target_user(body)
+    try:
+        chat_id = int(body.get("chat_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Укажите chat_id (Telegram chat id)")
+    try:
+        amount = int(body.get("amount"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="amount должен быть целым числом")
+    if amount == 0:
+        raise HTTPException(status_code=400, detail="amount не должен быть 0")
+    if abs(amount) > 10_000_000:
+        raise HTTPException(status_code=400, detail="amount слишком большой")
+
+    await UserOrm.insert_or_update_user(user_id)
+    try:
+        await TelegramChatOrm.insert_or_update_telegram_chat(chat_id)
+    except Exception:
+        logger.exception("grant_coins: chat upsert failed chat_id=%s", chat_id)
+
+    gu = await GroupUserOrm.get_group_user(user_id, chat_id)
+    if gu is None:
+        gu = await GroupUserOrm.insert_or_update_group_user(user_id, chat_id, money=0)
+
+    if amount > 0:
+        await gu.money_plus(amount)
+    else:
+        gu = await GroupUserOrm.get_group_user(user_id, chat_id)
+        if gu is None or gu.money < abs(amount):
+            raise HTTPException(status_code=400, detail="Недостаточно васякоинов для списания")
+        await gu.money_minus(abs(amount))
+
+    gu2 = await GroupUserOrm.get_group_user(user_id, chat_id)
+    balance = int(gu2.money) if gu2 else None
+    logger.info(
+        "ADMIN_AUDIT grant_coins admin=%s target=%s(@%s) chat=%s amount=%s balance=%s",
+        profile["id"],
+        user_id,
+        username,
+        chat_id,
+        amount,
+        balance,
+    )
+    return {
+        "ok": True,
+        "user_id": user_id,
+        "username": username,
+        "chat_id": chat_id,
+        "amount": amount,
+        "balance": balance,
+    }

@@ -8,10 +8,10 @@ import GlassCard from "../components/GlassCard";
 import NeonButton from "../components/NeonButton";
 import {
   ShieldIcon, ChartIcon, TagIcon, PaymentIcon,
-  CheckIcon, XIcon, AdIcon, BackIcon, CrownIcon,
+  CheckIcon, XIcon, AdIcon, BackIcon, CrownIcon, CoinIcon,
 } from "../components/icons";
 
-type Tab = "campaigns" | "stats" | "prices" | "payments" | "subscriptions";
+type Tab = "campaigns" | "stats" | "prices" | "payments" | "subscriptions" | "grant";
 
 const STATUS_RU: Record<string, string> = {
   draft: "Черновик",
@@ -111,6 +111,7 @@ export default function Admin() {
   const tabs: { id: Tab; label: string; icon: typeof ShieldIcon }[] = [
     { id: "campaigns", label: "Заявки", icon: AdIcon },
     { id: "subscriptions", label: "Подписки", icon: CrownIcon },
+    { id: "grant", label: "Выдача", icon: CoinIcon },
     { id: "stats", label: "Статистика", icon: ChartIcon },
     { id: "prices", label: "Цены", icon: TagIcon },
     { id: "payments", label: "Платежи", icon: PaymentIcon },
@@ -152,6 +153,7 @@ export default function Admin() {
           >
             {tab === "campaigns" && <CampaignsTab />}
             {tab === "subscriptions" && <SubscriptionsTab />}
+            {tab === "grant" && <GrantTab />}
             {tab === "stats" && <StatsTab />}
             {tab === "prices" && <PricesTab />}
             {tab === "payments" && <PaymentsTab />}
@@ -617,6 +619,121 @@ function SubscriptionsTab() {
           </GlassCard>
         </motion.div>
       ))}
+    </div>
+  );
+}
+
+// ---- Grant Tab (subs + coins) ----
+function GrantTab() {
+  const [userKey, setUserKey] = useState("");
+  const [tier, setTier] = useState("vip");
+  const [days, setDays] = useState("30");
+  const [chatId, setChatId] = useState("");
+  const [coins, setCoins] = useState("100");
+  const [busy, setBusy] = useState<"sub" | "coins" | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const resolveBody = () => {
+    const raw = userKey.trim();
+    if (!raw) throw new Error("Укажите user_id или @username");
+    if (/^\d+$/.test(raw)) return { user_id: Number(raw) };
+    return { username: raw.replace(/^@/, "") };
+  };
+
+  const onGrantSub = async () => {
+    setBusy("sub");
+    setMsg(null);
+    try {
+      const body = { ...resolveBody(), tier, days: Number(days) };
+      const r = await api.grantSubscription(body);
+      hapticNotify("success");
+      setMsg(
+        `Подписка ${ruTier(r.tier)} выдана user ${r.user_id}` +
+          (r.username ? ` (@${r.username})` : "") +
+          (r.expires_at ? ` до ${new Date(r.expires_at).toLocaleString("ru-RU")}` : "")
+      );
+    } catch (e) {
+      hapticNotify("error");
+      setMsg(e instanceof ApiError ? formatApiDetail(e.detail) || e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onGrantCoins = async () => {
+    setBusy("coins");
+    setMsg(null);
+    try {
+      const cid = Number(chatId);
+      if (!Number.isFinite(cid) || cid === 0) throw new Error("Укажите chat_id группы");
+      const amount = Number(coins);
+      if (!Number.isFinite(amount) || amount === 0) throw new Error("Укажите amount ≠ 0");
+      const r = await api.grantCoins({ ...resolveBody(), chat_id: cid, amount });
+      hapticNotify("success");
+      setMsg(
+        `${amount > 0 ? "Начислено" : "Списано"} ${Math.abs(amount)} коинов user ${r.user_id}` +
+          (r.username ? ` (@${r.username})` : "") +
+          ` · баланс ${r.balance ?? "—"}`
+      );
+    } catch (e) {
+      hapticNotify("error");
+      setMsg(e instanceof ApiError ? formatApiDetail(e.detail) || e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      {msg && <GlassCard className="text-sm text-neon-cyan whitespace-pre-wrap">{msg}</GlassCard>}
+      <GlassCard className="flex flex-col gap-3">
+        <p className="font-bold text-sm">Кому</p>
+        <input
+          className="glass rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
+          placeholder="user_id или @username"
+          value={userKey}
+          onChange={(e) => setUserKey(e.target.value)}
+        />
+      </GlassCard>
+      <GlassCard className="flex flex-col gap-3">
+        <p className="font-bold text-sm flex items-center gap-2"><CrownIcon size={16} /> Подписка</p>
+        <select
+          className="glass rounded-xl px-3 py-2 text-sm bg-black/40 outline-none"
+          value={tier}
+          onChange={(e) => setTier(e.target.value)}
+        >
+          <option value="vip">VIP</option>
+          <option value="premium">Premium</option>
+          <option value="elite">Elite</option>
+        </select>
+        <input
+          className="glass rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
+          placeholder="Дней"
+          value={days}
+          onChange={(e) => setDays(e.target.value)}
+        />
+        <NeonButton variant="purple" size="sm" disabled={busy === "sub"} onClick={onGrantSub}>
+          {busy === "sub" ? "Выдаю…" : "Выдать подписку"}
+        </NeonButton>
+      </GlassCard>
+      <GlassCard className="flex flex-col gap-3">
+        <p className="font-bold text-sm flex items-center gap-2"><CoinIcon size={16} /> Васякоины</p>
+        <input
+          className="glass rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
+          placeholder="chat_id группы (отрицательный)"
+          value={chatId}
+          onChange={(e) => setChatId(e.target.value)}
+        />
+        <input
+          className="glass rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
+          placeholder="Сумма (+начислить / −списать)"
+          value={coins}
+          onChange={(e) => setCoins(e.target.value)}
+        />
+        <NeonButton variant="cyan" size="sm" disabled={busy === "coins"} onClick={onGrantCoins}>
+          {busy === "coins" ? "Шлю…" : "Изменить баланс"}
+        </NeonButton>
+      </GlassCard>
     </div>
   );
 }

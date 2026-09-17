@@ -15,6 +15,22 @@ class UserOrm(Base):
     username: Mapped[str] = mapped_column(nullable=True)
     rank: Mapped[Rank] = mapped_column(default=Rank.USER)
 
+
+    @staticmethod
+    async def get_by_username(username: str) -> "UserOrm | None":
+        """Поиск пользователя по username (без @, case-insensitive)."""
+        if not username:
+            return None
+        uname = username.strip().lstrip("@")
+        if not uname:
+            return None
+        async with async_session_factory() as session:
+            from sqlalchemy import func
+
+            query = select(UserOrm).filter(func.lower(UserOrm.username) == uname.lower())
+            result = await session.execute(query)
+            return result.scalars().first()
+
     @staticmethod
     async def get_user_by_id(user_id: int) -> "UserOrm | None":
         async with async_session_factory() as session:

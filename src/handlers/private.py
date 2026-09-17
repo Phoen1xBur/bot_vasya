@@ -96,6 +96,10 @@ async def start(message: Message, command: CommandObject, bot: Bot):
                     url = f"{_settings.WEBAPP_BASE_URL}/webapp/?page=slots&chat_id={chat_id}"
                     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔔 Слот-машина", web_app=WebAppInfo(url=url))]])
                     await message.answer("Слот-машина — откройте Mini App:", reply_markup=kb)
+                case "minigame_blackjack", chat_id:
+                    url = f"{_settings.WEBAPP_BASE_URL.rstrip('/')}/webapp/?page=blackjack&chat_id={chat_id}"
+                    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🃏 Блэкджек", web_app=WebAppInfo(url=url))]])
+                    await message.answer("Блэкджек — откройте Mini App:", reply_markup=kb)
                 case _:
                     await message.answer(f"Неизвестная команда: {request_func}")
         except Exception:

@@ -478,6 +478,178 @@ async def _notify_ttt_finished(room: GameRoomOrm, winner_id: int | None, draw: b
         logger.exception("не удалось уведомить чат о результате TTT room=%s", room.id)
 
 
+
+# ---------------- Блэкджек (соло vs дилер) ----------------
+
+_BJ_RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
+_BJ_SUITS = ["♠", "♥", "♦", "♣"]
+
+
+def _bj_new_deck() -> list[str]:
+    deck = [f"{r}{s}" for s in _BJ_SUITS for r in _BJ_RANKS]
+    random.shuffle(deck)
+    return deck
+
+
+def _bj_card_value(card: str) -> int:
+    rank = card[:-1]
+    if rank in ("J", "Q", "K"):
+        return 10
+    if rank == "A":
+        return 11
+    return int(rank)
+
+
+def _bj_hand_value(cards: list[str]) -> int:
+    total = sum(_bj_card_value(c) for c in cards)
+    aces = sum(1 for c in cards if c.startswith("A"))
+    while total > 21 and aces:
+        total -= 10
+        aces -= 1
+    return total
+
+
+def _bj_public_state(state: dict, reveal_dealer: bool = False) -> dict:
+    dealer = list(state.get("dealer") or [])
+    if not reveal_dealer and dealer:
+        dealer_view = [dealer[0], "??"] + dealer[2:]
+    else:
+        dealer_view = dealer
+    return {
+        "phase": state.get("phase", "bet"),
+        "player": list(state.get("player") or []),
+        "dealer": dealer_view,
+        "player_value": _bj_hand_value(state.get("player") or []),
+        "dealer_value": _bj_hand_value(dealer) if reveal_dealer else (
+            _bj_card_value(dealer[0]) if dealer else 0
+        ),
+        "bet": int(state.get("bet") or 0),
+        "result": state.get("result"),
+        "payout": int(state.get("payout") or 0),
+        "message": state.get("message"),
+        "net": int(state["payout"] - state["bet"]) if state.get("phase") == "finished" else None,
+    }
+
+
+async def blackjack_action(room: GameRoomOrm, user_id: int, action: dict) -> dict:
+    """Соло-блэкджек. action: {op: deal|hit|stand, bet?: int}"""
+    if room.status not in (GameRoomStatus.WAITING, GameRoomStatus.ACTIVE):
+        raise ValueError("Блэкджек недоступен")
+
+    op = str(action.get("op") or action.get("action") or "").lower()
+    state = dict(room.state or {})
+    phase = state.get("phase", "bet")
+
+    if op == "deal":
+        if phase not in ("bet", "finished", None, ""):
+            raise ValueError("Сначала завершите текущую раздачу")
+        bet = int(action.get("bet") or 0)
+        if bet <= 0:
+            raise ValueError("Ставка должна быть положительной")
+        ok = await _charge_bet(room.chat_id, user_id, bet)
+        if not ok:
+            raise ValueError("Недостаточно васякоинов")
+
+        deck = _bj_new_deck()
+        player = [deck.pop(), deck.pop()]
+        dealer = [deck.pop(), deck.pop()]
+        state = {
+            "phase": "player",
+            "deck": deck,
+            "player": player,
+            "dealer": dealer,
+            "bet": bet,
+            "result": None,
+            "payout": 0,
+            "message": None,
+        }
+        # Natural blackjack?
+        pv = _bj_hand_value(player)
+        dv = _bj_hand_value(dealer)
+        if pv == 21 or dv == 21:
+            state = await _bj_settle(room, user_id, state, natural=True)
+        await GameRoomOrm.update(str(room.id), state=state, status=GameRoomStatus.ACTIVE)
+        reveal = state.get("phase") == "finished"
+        return _bj_public_state(state, reveal_dealer=reveal)
+
+    if op == "hit":
+        if phase != "player":
+            raise ValueError("Сейчас нельзя взять карту")
+        deck = list(state.get("deck") or [])
+        if not deck:
+            deck = _bj_new_deck()
+        state.setdefault("player", []).append(deck.pop())
+        state["deck"] = deck
+        if _bj_hand_value(state["player"]) > 21:
+            state = await _bj_settle(room, user_id, state)
+        await GameRoomOrm.update(str(room.id), state=state, status=GameRoomStatus.ACTIVE)
+        reveal = state.get("phase") == "finished"
+        return _bj_public_state(state, reveal_dealer=reveal)
+
+    if op == "stand":
+        if phase != "player":
+            raise ValueError("Сейчас нельзя остановиться")
+        # Дилер добирает до 17+
+        deck = list(state.get("deck") or [])
+        dealer = list(state.get("dealer") or [])
+        while _bj_hand_value(dealer) < 17:
+            if not deck:
+                deck = _bj_new_deck()
+            dealer.append(deck.pop())
+        state["dealer"] = dealer
+        state["deck"] = deck
+        state = await _bj_settle(room, user_id, state)
+        await GameRoomOrm.update(str(room.id), state=state, status=GameRoomStatus.ACTIVE)
+        return _bj_public_state(state, reveal_dealer=True)
+
+    raise ValueError("Неизвестное действие блэкджека (deal|hit|stand)")
+
+
+async def _bj_settle(room: GameRoomOrm, user_id: int, state: dict, natural: bool = False) -> dict:
+    player = list(state.get("player") or [])
+    dealer = list(state.get("dealer") or [])
+    bet = int(state.get("bet") or 0)
+    pv = _bj_hand_value(player)
+    dv = _bj_hand_value(dealer)
+    payout = 0
+    result = "lose"
+    message = ""
+
+    if pv > 21:
+        result, message = "lose", "Перебор! Вы проиграли"
+    elif natural and pv == 21 and dv != 21:
+        payout = bet + int(bet * 3 / 2)  # ставка + 3:2
+        result, message = "blackjack", "Блэкджек! Выигрыш 3:2"
+    elif natural and pv == 21 and dv == 21:
+        payout = bet
+        result, message = "push", "Два блэкджека — ничья, ставка возвращена"
+    elif dv > 21:
+        payout = bet * 2
+        result, message = "win", "Дилер перебрал — вы выиграли"
+    elif pv > dv:
+        payout = bet * 2
+        result, message = "win", "Вы выиграли"
+    elif pv == dv:
+        payout = bet
+        result, message = "push", "Ничья — ставка возвращена"
+    else:
+        result, message = "lose", "Дилер выиграл"
+
+    if payout > 0:
+        await _payout(room.chat_id, user_id, payout)
+
+    state.update(
+        {
+            "phase": "finished",
+            "result": result,
+            "payout": payout,
+            "message": message,
+            "net": payout - bet,
+        }
+    )
+    return state
+
+
 async def get_room_state_view(room: GameRoomOrm) -> dict:
     return {
         "id": str(room.id),

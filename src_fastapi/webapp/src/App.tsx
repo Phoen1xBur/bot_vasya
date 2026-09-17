@@ -10,6 +10,7 @@ import Profile from "./pages/Profile";
 import TTT from "./pages/TTT";
 import Roulette from "./pages/Roulette";
 import Slots from "./pages/Slots";
+import Blackjack from "./pages/Blackjack";
 import Casino from "./pages/Casino";
 import Advertise from "./pages/Advertise";
 import Admin from "./pages/Admin";
@@ -55,6 +56,7 @@ export default function App() {
       case "ttt": return <TTT />;
       case "roulette": return <Roulette />;
       case "slots": return <Slots />;
+      case "blackjack": return <Blackjack />;
       case "casino": return <Casino />;
       case "advertise": return <Advertise />;
       case "admin": return <Admin />;

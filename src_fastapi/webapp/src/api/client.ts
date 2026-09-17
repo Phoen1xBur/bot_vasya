@@ -183,4 +183,32 @@ export const api = {
     ),
   getAdminCampaigns: () =>
     api.get<{ campaigns: import("../types").AdCampaign[] }>("/api/admin/campaigns"),
+  grantSubscription: (body: {
+    user_id?: number;
+    username?: string;
+    tier: string;
+    days?: number;
+    expires_at?: string;
+  }) =>
+    api.post<{
+      ok: boolean;
+      user_id: number;
+      username?: string | null;
+      tier: string;
+      expires_at: string | null;
+    }>("/api/admin/grant/subscription", body),
+  grantCoins: (body: {
+    user_id?: number;
+    username?: string;
+    chat_id: number;
+    amount: number;
+  }) =>
+    api.post<{
+      ok: boolean;
+      user_id: number;
+      username?: string | null;
+      chat_id: number;
+      amount: number;
+      balance: number | null;
+    }>("/api/admin/grant/coins", body),
 };

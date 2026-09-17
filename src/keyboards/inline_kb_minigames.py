@@ -7,5 +7,6 @@ def build_inline_kb_minigames_select() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="❌ Крестики-нолики (дуэль)", callback_data="mg:select:ttt")],
         [InlineKeyboardButton(text="🎰 Рулетка", callback_data="mg:select:roulette")],
         [InlineKeyboardButton(text="🔔 Слот-машина", callback_data="mg:select:slots")],
+        [InlineKeyboardButton(text="🃏 Блэкджек", callback_data="mg:select:blackjack")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)

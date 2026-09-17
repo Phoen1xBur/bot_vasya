@@ -2,7 +2,7 @@
 import hashlib
 import hmac
 import json
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 
 from shared.telegram_auth import (
     get_user_profile_from_init_data,
@@ -12,8 +12,18 @@ from shared.telegram_auth import (
 BOT_TOKEN = "123:test:token"
 
 
-def _make_init_data(user_id: int = 42, username: str = "alice", first: str = "Alice") -> str:
-    """Собирает валидный initData с корректной HMAC-подписью под BOT_TOKEN."""
+def _sign(params: dict) -> str:
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
+    secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+    params = dict(params)
+    params["hash"] = hmac.new(
+        secret_key, data_check_string.encode(), hashlib.sha256
+    ).hexdigest()
+    return urlencode(params)
+
+
+def _make_init_data(user_id: int = 42, username: str = "alice", first: str = "Alice", extra: dict | None = None) -> str:
+    """Собирает валидный initData с корректной WebAppData HMAC-подписью."""
     params = {
         "query_id": "query_123",
         "user": json.dumps(
@@ -22,20 +32,32 @@ def _make_init_data(user_id: int = 42, username: str = "alice", first: str = "Al
         ),
         "auth_date": "1700000000",
     }
-    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
-    secret_key = hashlib.sha256(BOT_TOKEN.encode()).digest()
-    params["hash"] = hmac.new(
-        secret_key, data_check_string.encode(), hashlib.sha256
-    ).hexdigest()
-    return urlencode(params)
+    if extra:
+        params.update(extra)
+    return _sign(params)
 
 
 def test_validate_correct_init_data():
     assert validate_telegram_init_data(_make_init_data(), BOT_TOKEN) is True
 
 
+def test_validate_with_signature_field():
+    # Bot API 7.2+: signature входит в HMAC data_check_string
+    assert (
+        validate_telegram_init_data(
+            _make_init_data(extra={"signature": "abcSIG"}), BOT_TOKEN
+        )
+        is True
+    )
+
+
+def test_validate_url_encoded_wrapper():
+    raw = _make_init_data()
+    wrapped = "tgWebAppData=" + quote(raw, safe="")
+    assert validate_telegram_init_data(wrapped, BOT_TOKEN) is True
+
+
 def test_validate_tampered_init_data():
-    # дописан мусор — подпись не совпадёт
     assert validate_telegram_init_data(_make_init_data() + "x", BOT_TOKEN) is False
 
 

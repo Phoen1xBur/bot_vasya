@@ -62,6 +62,7 @@ async def on_select_minigame(callback: CallbackQuery):
         game_param = {
             "roulette": "minigame_roulette",
             "slots": "minigame_slots",
+            "blackjack": "minigame_blackjack",
         }.get(game, game)
 
         room_id = None

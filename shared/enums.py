@@ -91,6 +91,7 @@ class GameType(Enum):
     TTT = "ttt"          # крестики-нолики (дуэль 1×1)
     ROULETTE = "roulette"
     SLOTS = "slots"      # слот-машина
+    BLACKJACK = "blackjack"  # блэкджек (соло vs дилер)
 
 
 @unique

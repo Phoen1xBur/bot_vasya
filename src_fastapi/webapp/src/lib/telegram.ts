@@ -42,6 +42,7 @@ export type PageName =
   | "ttt"
   | "roulette"
   | "slots"
+  | "blackjack"
   | "casino"
   | "advertise"
   | "admin"
@@ -65,7 +66,30 @@ export function getTelegramWebApp() {
 }
 
 export function getInitData(): string {
-  return window.Telegram?.WebApp?.initData ?? "";
+  const fromSdk = window.Telegram?.WebApp?.initData ?? "";
+  if (fromSdk) return fromSdk;
+  // Desktop Telegram иногда кладёт initData только в hash (tgWebAppData=...)
+  try {
+    const hash = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : window.location.hash;
+    const hp = new URLSearchParams(hash);
+    const raw =
+      hp.get("tgWebAppData") ||
+      hp.get("tgWebAppData".toLowerCase()) ||
+      "";
+    if (raw) return raw;
+  } catch {
+    // ignore
+  }
+  try {
+    const q = new URLSearchParams(window.location.search);
+    const raw = q.get("tgWebAppData") || "";
+    if (raw) return raw;
+  } catch {
+    // ignore
+  }
+  return "";
 }
 
 export function getCurrentUserId(): number | null {
@@ -115,7 +139,8 @@ export function applyTheme() {
     page === "payment_success" ||
     page === "payment_fail" ||
     page === "subscribe" ||
-    page === "roulette";
+    page === "roulette" ||
+    page === "blackjack";
   const scheme = forceDark ? "dark" : (tg?.colorScheme ?? "dark");
   if (scheme === "light") {
     html.classList.remove("dark");
@@ -158,7 +183,7 @@ export function isInsideTelegram(): boolean {
 }
 
 export function isTelegramOnlyPage(page: PageName, params: UrlParams): boolean {
-  const gated: PageName[] = ["ttt", "roulette", "slots", "casino"];
+  const gated: PageName[] = ["ttt", "roulette", "slots", "blackjack", "casino"];
   if (gated.includes(page)) return true;
   // any deep-link into a room is Telegram-only
   return Boolean(params.room || params.game);

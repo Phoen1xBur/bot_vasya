@@ -15,6 +15,14 @@ const games = [
     url: (chatId: string | null) => `/webapp/?page=roulette${chatId ? `&chat_id=${chatId}` : ""}`,
   },
   {
+    id: "blackjack",
+    title: "Блэкджек",
+    desc: "Классика 21 против дилера на васякоины",
+    icon: DiceIcon,
+    gradient: "from-emerald-400 to-teal-700",
+    url: (chatId: string | null) => `/webapp/?page=blackjack${chatId ? `&chat_id=${chatId}` : ""}`,
+  },
+  {
     id: "slots",
     title: "Слоты",
     desc: "Крути барабаны — лови джекпот!",
