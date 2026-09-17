@@ -46,6 +46,15 @@ export default function TTT() {
           const r = await api.getRoom(params.room);
           if (cancelled) return;
           setRoom(r as RoomState);
+          if (
+            myId &&
+            r.initiator_id !== myId &&
+            r.target_id !== myId
+          ) {
+            setError("Комната не для вас — дуэль только для двух игроков.");
+            return;
+          }
+
           // Opponent accepts waiting duel
           if (r.status === "waiting" && myId && myId === r.target_id) {
             try {

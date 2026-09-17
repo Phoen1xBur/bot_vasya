@@ -75,11 +75,9 @@ async def start(message: Message, command: CommandObject, bot: Bot):
                         )
                         await message.answer(f"⚔️ Дуэль — вы {role}. Откройте Mini App:", reply_markup=kb)
                     else:
-                        url = f"{_settings.WEBAPP_BASE_URL.rstrip('/')}/webapp/?page=ttt&chat_id={chat_id}"
-                        kb = InlineKeyboardMarkup(
-                            inline_keyboard=[[InlineKeyboardButton(text="❌ Играть в крестики-нолики", web_app=WebAppInfo(url=url))]]
+                        await message.answer(
+                            "Ссылка на дуэль устарела. Создайте новую игру командой мини-игр в группе."
                         )
-                        await message.answer("Крестики-нолики — откройте Mini App:", reply_markup=kb)
                 case "minigame_roulette", chat_id:
                     q = f"page=roulette&chat_id={chat_id}"
                     if room:

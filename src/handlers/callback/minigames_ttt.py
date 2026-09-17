@@ -149,18 +149,18 @@ async def _resolve_opponent(message: Message, bot: Bot) -> User | None:
 
 
 async def _duel_start_kb(bot: Bot, chat_id: int, room_id: str) -> InlineKeyboardMarkup:
-    """URL-кнопка t.me/.../start=... (короткий alphanumeric + encode=True)."""
-    from utils.deeplink import create_dm_start_link
-
-    link = await create_dm_start_link(
-        bot,
-        request_func="minigame_ttt",
-        chat_id=chat_id,
-        room_id=room_id,
-    )
+    """Callback Start: only initiator/target get a private WebApp button."""
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="⚔️ Start — открыть дуэль", url=link)]]
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⚔️ Start — открыть дуэль",
+                    callback_data=f"mg:ttt:open:{room_id}",
+                )
+            ]
+        ]
     )
+
 
 
 async def _send_duel_links(
@@ -203,6 +203,46 @@ async def _send_duel_links(
             )
         except Exception:
             logger.exception("не удалось уведомить группу о blocked DM")
+
+
+
+@router.callback_query(F.data.startswith("mg:ttt:open:"))
+async def on_ttt_open(callback: CallbackQuery):
+    """Open duel only for initiator/target; send WebApp button in DM."""
+    try:
+        room_id = callback.data.split(":")[-1]
+        room = await GameRoomOrm.get(room_id)
+        if room is None:
+            await callback.answer("Комната не найдена или истекла", show_alert=True)
+            return
+        uid = callback.from_user.id if callback.from_user else None
+        if uid not in (room.initiator_id, room.target_id):
+            await callback.answer("Комната не для вас", show_alert=True)
+            return
+        url = _webapp_ttt_url(int(room.chat_id), str(room.id), int(room.target_id or 0))
+        role = "крестики (X)" if uid == room.initiator_id else "нолики (O)"
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="⚔️ Открыть дуэль", web_app=WebAppInfo(url=url))]
+            ]
+        )
+        bot_uname = (_settings.BOT_USERNAME or "vasya_fun_bot").lstrip("@")
+        try:
+            await callback.bot.send_message(
+                uid,
+                f"⚔️ Дуэль — вы {role}. Откройте Mini App:",
+                reply_markup=kb,
+            )
+            await callback.answer("Ссылка отправлена в ЛС с ботом")
+        except Exception as e:
+            logger.warning("DM open duel failed user=%s: %s", uid, e)
+            await callback.answer(
+                f"Не могу написать в ЛС. Откройте @{bot_uname}, нажмите /start и снова Start здесь.",
+                show_alert=True,
+            )
+    except Exception:
+        logger.exception("ошибка open TTT")
+        await callback.answer("Произошла ошибка", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("mg:ttt:pick_cancel:"))

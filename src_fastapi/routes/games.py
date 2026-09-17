@@ -20,6 +20,16 @@ _settings = get_settings()
 router = APIRouter(prefix="/api/games", tags=["Игры"])
 
 
+def _assert_ttt_participant(room, user_id: int) -> None:
+    """TTT room is private to initiator + target."""
+    if room.game_type != GameType.TTT:
+        return
+    allowed = {room.initiator_id, room.target_id} - {None}
+    if user_id not in allowed:
+        raise HTTPException(status_code=403, detail="Комната не для вас")
+
+
+
 @router.post("/rooms")
 async def create_room(body: dict = Body(...), profile: dict = Depends(require_telegram_user)):
     """Создать комнату.
@@ -89,6 +99,7 @@ async def get_room(room_id: str, profile: dict = Depends(require_telegram_user))
     room = await GameRoomOrm.get(room_id)
     if room is None:
         raise HTTPException(status_code=404, detail="Комната не найдена")
+    _assert_ttt_participant(room, profile["id"])
     # Проверка не истекла ли
     if room.status in (GameRoomStatus.WAITING, GameRoomStatus.ACTIVE):
         from datetime import datetime
@@ -152,6 +163,7 @@ async def game_action(
     room = await GameRoomOrm.get(room_id)
     if room is None:
         raise HTTPException(status_code=404, detail="Комната не найдена")
+    _assert_ttt_participant(room, profile["id"])
 
     user_id = profile["id"]
     action = body.get("action", body)
