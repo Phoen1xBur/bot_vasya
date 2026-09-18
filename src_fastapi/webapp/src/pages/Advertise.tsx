@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api, ApiError, formatApiDetail } from "../api/client";
 import type { AdRules, AdCampaignResponse } from "../types";
@@ -116,7 +116,7 @@ export default function Advertise() {
         );
         if (payable) {
           setResult({
-            campaign_id: payable.id || payable.campaign_id,
+            campaign_id: String(payable.id || payable.campaign_id || ""),
             status: payable.status,
             ai_verdict: payable.ai_verdict,
             price: payable.price,
