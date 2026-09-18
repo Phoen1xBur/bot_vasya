@@ -304,6 +304,12 @@ async def on_ttt_force_cancel(callback: CallbackQuery):
         if uid not in (room.initiator_id, room.target_id):
             await callback.answer("Завершить может только участник этой дуэли", show_alert=True)
             return
+        try:
+            from shared.game_stakes import refund_room_stakes
+
+            await refund_room_stakes(room)
+        except Exception:
+            logger.exception("force_cancel refund failed room=%s", room_id)
         await GameRoomOrm.update(str(room.id), status=GameRoomStatus.CANCELLED)
         try:
             get_redis().delete(_room_key(int(room.chat_id)))

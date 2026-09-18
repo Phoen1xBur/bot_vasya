@@ -13,6 +13,7 @@ from shared.enums import GameRoomStatus, GameType
 from shared.models.game_room import GameRoomOrm
 from shared.models.group_user import GroupUserOrm
 from shared.redis_client import get_redis
+from shared.game_stakes import refund_bet as _refund_bet_shared
 
 logger = logging.getLogger(__name__)
 _settings = get_settings()
@@ -426,16 +427,7 @@ async def _charge_bet(chat_id: int, user_id: int, amount: int) -> bool:
 
 async def _refund_bet(chat_id: int, user_id: int, amount: int) -> None:
     """Вернуть ранее списанную (но не разыгранную) ставку. amount must be > 0."""
-    amount = int(amount)
-    if amount <= 0:
-        return
-    try:
-        group_user = await GroupUserOrm.get_group_user(user_id, chat_id)
-        if group_user is None:
-            return
-        await group_user.money_plus(amount)
-    except Exception:
-        logger.exception("Ошибка возврата ставки chat=%s user=%s", chat_id, user_id)
+    await _refund_bet_shared(chat_id, user_id, amount)
 
 
 async def _payout(chat_id: int, user_id: int, amount: int) -> None:
@@ -477,10 +469,16 @@ async def _finish_game(room: GameRoomOrm, winner_id: int | None, draw: bool = Fa
         status=GameRoomStatus.FINISHED,
         winner_id=winner_id,
     )
-    # Для дуэли (TTT) со ставкой — победитель забирает банк (минус комиссия)
-    if room.game_type == GameType.TTT and room.bet > 0 and winner_id and not draw:
-        bank = room.bet * 2
-        await _payout(room.chat_id, winner_id, bank)
+    # Для дуэли (TTT) со ставкой — победитель забирает банк (минус комиссия);
+    # ничья — возвращаем ставки обеим сторонам без комиссии.
+    if room.game_type == GameType.TTT and room.bet > 0:
+        if draw:
+            await _refund_bet(room.chat_id, room.initiator_id, room.bet)
+            if room.target_id:
+                await _refund_bet(room.chat_id, room.target_id, room.bet)
+        elif winner_id:
+            bank = room.bet * 2
+            await _payout(room.chat_id, winner_id, bank)
 
 
     if room.game_type == GameType.TTT:
@@ -678,7 +676,11 @@ async def _bj_settle(room: GameRoomOrm, user_id: int, state: dict, natural: bool
         result, message = "lose", "Дилер выиграл"
 
     if payout > 0:
-        await _payout(room.chat_id, user_id, payout)
+        # Push returns stake 1:1 without house commission; wins go through _payout.
+        if result == "push":
+            await _refund_bet(room.chat_id, user_id, payout)
+        else:
+            await _payout(room.chat_id, user_id, payout)
 
     state.update(
         {

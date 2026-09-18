@@ -328,7 +328,9 @@ async def rob(message: Message, bot: aiogram.Bot) -> str:
     if victim_user_orm.money < ROB_VICTIM_MIN_MONEY:
         return "У этого пользователя недостаточно денег!"
 
-    money = roll_rob_amount()
+    money = min(roll_rob_amount(), int(victim_user_orm.money))
+    if money <= 0:
+        return "У этого пользователя недостаточно денег!"
     vasya_coin = declension_word_by_number(money, "васякоинов", "васякоин", "васякоина")
     outcome = roll_rob_outcome()
 
@@ -357,11 +359,15 @@ async def rob(message: Message, bot: aiogram.Bot) -> str:
             Prison.add_prisoner(
                 chat_id=message.chat.id, user_id=message.from_user.id, imprisonment_time=PRISON_TIME
             )
-            await group_user_from.money_minus(ROB_PENALTY)
+            penalty = min(ROB_PENALTY, int(group_user_from.money))
+            if penalty > 0:
+                await group_user_from.money_minus(penalty)
+            else:
+                penalty = 0
             return (
                 f"При попытке украсть {money} {vasya_coin}, Вы попались полиции.\n"
                 f"Вас отправили в тюрьму на {PRISON_TIME.seconds // 3600} часов.\n"
-                f"{html.bold(html.italic(f'В качестве штрафа с вас взяли {ROB_PENALTY} васякоинов'))}"
+                f"{html.bold(html.italic(f'В качестве штрафа с вас взяли {penalty} васякоинов'))}"
             )
         case _:
             raise ValueError("Необработанный тип!")

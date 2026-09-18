@@ -212,38 +212,23 @@ async def cancel_room(room_id: str, profile: dict = Depends(require_telegram_use
     if room.status not in (GameRoomStatus.WAITING, GameRoomStatus.ACTIVE):
         raise HTTPException(status_code=400, detail="Комната уже завершена")
 
-    # Возврат: room.bet (дуэль/старый клиент) + неразыгранные pending_bets рулетки
-    from shared.models.group_user import GroupUserOrm
+    # Возврат ставок: initiator + TTT target(ACTIVE) + roulette pending/orphan + BJ mid-hand
+    from shared.game_stakes import refund_room_stakes
 
-    if room.bet > 0:
-        group_user = await GroupUserOrm.get_group_user(room.initiator_id, room.chat_id)
-        if group_user:
-            await group_user.money_plus(room.bet)
-        # TTT: target also paid on join when ACTIVE
-        if room.game_type == GameType.TTT and room.status == GameRoomStatus.ACTIVE and room.target_id:
-            gu_t = await GroupUserOrm.get_group_user(room.target_id, room.chat_id)
-            if gu_t:
-                await gu_t.money_plus(room.bet)
+    await refund_room_stakes(room)
 
     if room.game_type == GameType.ROULETTE:
         state = dict(room.state or {})
-        pending = list(state.get("pending_bets") or [])
-        by_uid: dict[int, int] = {}
-        for b in pending:
-            try:
-                uid = int(b.get("user_id"))
-                amt = int(b.get("amount") or 0)
-            except (TypeError, ValueError):
-                continue
-            if amt > 0:
-                by_uid[uid] = by_uid.get(uid, 0) + amt
-        for uid, amt in by_uid.items():
-            gu = await GroupUserOrm.get_group_user(uid, room.chat_id)
-            if gu:
-                await gu.money_plus(amt)
         state["pending_bets"] = []
         for p in state.get("players") or []:
             p["bet"] = 0
+        await GameRoomOrm.update(room_id, state=state, status=GameRoomStatus.CANCELLED)
+    elif room.game_type == GameType.BLACKJACK:
+        state = dict(room.state or {})
+        if state.get("phase") == "player":
+            state["phase"] = "bet"
+            state["bet"] = 0
+            state["message"] = "Комната отменена — ставка возвращена"
         await GameRoomOrm.update(room_id, state=state, status=GameRoomStatus.CANCELLED)
     else:
         await GameRoomOrm.update(room_id, status=GameRoomStatus.CANCELLED)

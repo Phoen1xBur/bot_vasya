@@ -118,11 +118,31 @@ class GameRoomOrm(Base):
                     GameRoomOrm.expires_at <= now,
                 )
             )
-            rooms = result.scalars().all()
+            rooms = list(result.scalars().all())
+            snapshots = [(str(r.id), r.status) for r in rooms]
             for r in rooms:
                 r.status = GameRoomStatus.EXPIRED
             await session.commit()
-            return len(rooms)
+
+        if snapshots:
+            try:
+                from shared.game_stakes import refund_room_stakes
+
+                for rid, prior_status in snapshots:
+                    room = await GameRoomOrm.get(rid)
+                    if room is None:
+                        continue
+                    try:
+                        await refund_room_stakes(room, status_override=prior_status)
+                    except Exception:
+                        import logging
+                        logging.getLogger(__name__).exception(
+                            "expire refund failed room=%s", rid
+                        )
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("expire refund import/loop failed")
+        return len(snapshots)
 
 
 class GameParticipantOrm(Base):
