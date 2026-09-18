@@ -61,6 +61,8 @@ export interface SlotsSpinResult {
 export interface AdRules {
   rules: string[];
   total_unique_users: number;
+  /** kopecks per 1000 unique users (from Redis / defaults) */
+  price_per_1000?: number;
 }
 
 export interface AdCampaign {

@@ -158,14 +158,24 @@ async def ai_check_ad(text: str, rules: list[str]) -> dict[str, Any]:
             raw = raw[start : end + 1]
         verdict = json.loads(raw)
         if not isinstance(verdict, dict):
-            return {"approved": False, "reason": "Некорректный ответ AI", "risk_level": "medium"}
+            return {
+                "approved": False,
+                "reason": "Некорректный ответ AI",
+                "risk_level": "medium",
+                "error": True,
+            }
         verdict.setdefault("approved", False)
         verdict.setdefault("reason", "")
         verdict.setdefault("risk_level", "medium")
         return verdict
     except Exception:
         logger.exception("Ошибка AI-проверки рекламы")
-        return {"approved": False, "reason": "Ошибка AI-проверки", "risk_level": "medium"}
+        return {
+            "approved": False,
+            "reason": "Ошибка AI-проверки",
+            "risk_level": "medium",
+            "error": True,
+        }
 
 
 # ---------------- AI-благодарность донатерам ----------------

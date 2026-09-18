@@ -22,7 +22,11 @@ router = APIRouter(prefix="/api/ads", tags=["Реклама"])
 @router.get("/rules")
 async def get_ad_rules():
     """Сводка правил для рекламодателей."""
-    return {"rules": AD_RULES, "total_unique_users": await count_total_unique_users()}
+    return {
+        "rules": AD_RULES,
+        "total_unique_users": await count_total_unique_users(),
+        "price_per_1000": get_ad_price_per_1000_kopecks(),
+    }
 
 
 @router.post("/campaigns")
@@ -61,14 +65,24 @@ async def submit_campaign(
         status=AdCampaignStatus.AI_PENDING,
     )
 
-    # AI-проверка (если включена — по умолчанию включена)
+    # AI-проверка (если включена — по умолчанию включена).
+    # Ошибка AI / сбой JSON → admin_pending (не ломаем подачу заявки).
     if is_ad_ai_check_enabled():
         verdict = await ai_check_ad(text, AD_RULES)
-        await AdCampaignOrm.update(
-            campaign.id,
-            ai_verdict=verdict,
-            status=AdCampaignStatus.AI_APPROVED if verdict.get("approved") else AdCampaignStatus.AI_REJECTED,
-        )
+        if verdict.get("error") or verdict.get("reason") == "Ошибка AI-проверки":
+            status = AdCampaignStatus.ADMIN_PENDING
+            base = verdict if isinstance(verdict, dict) else {}
+            verdict = {
+                **base,
+                "approved": None,
+                "error": True,
+                "reason": "Ошибка AI-проверки — заявка ушла на ручную модерацию",
+            }
+        elif verdict.get("approved"):
+            status = AdCampaignStatus.AI_APPROVED
+        else:
+            status = AdCampaignStatus.AI_REJECTED
+        await AdCampaignOrm.update(campaign.id, ai_verdict=verdict, status=status)
         campaign = await AdCampaignOrm.get_by_id(campaign.id)
     else:
         verdict = {"ok": True, "skipped": True, "approved": True}
@@ -128,9 +142,13 @@ async def approve_campaign(
     profile: dict = Depends(require_admin_user),
 ):
     """Одобрить заявку. Опционально comment."""
+    try:
+        cid = int(campaign_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Неверный id кампании")
     comment = (body or {}).get("comment", "")
     c = await AdCampaignOrm.update(
-        campaign_id,
+        cid,
         status=AdCampaignStatus.APPROVED,
         admin_comment=comment,
     )
@@ -140,7 +158,7 @@ async def approve_campaign(
     # Подбираем чаты по таргетингу
     result = await select_chats_for_target(c.target_unique_users)
     await AdCampaignOrm.update(
-        campaign_id,
+        cid,
         selected_chats=result.selected_chats,
     )
     return {
@@ -159,9 +177,13 @@ async def reject_campaign(
     profile: dict = Depends(require_admin_user),
 ):
     """Отклонить заявку."""
+    try:
+        cid = int(campaign_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Неверный id кампании")
     comment = (body or {}).get("comment", "")
     c = await AdCampaignOrm.update(
-        campaign_id,
+        cid,
         status=AdCampaignStatus.REJECTED,
         admin_comment=comment,
     )
@@ -173,7 +195,11 @@ async def reject_campaign(
 @router.get("/campaigns/{campaign_id}")
 async def get_campaign(campaign_id: str, profile: dict = Depends(require_telegram_user)):
     """Отчёт рекламодателю по своей кампании."""
-    c = await AdCampaignOrm.get_by_id(campaign_id)
+    try:
+        cid = int(campaign_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Неверный id кампании")
+    c = await AdCampaignOrm.get_by_id(cid)
     if c is None:
         raise HTTPException(status_code=404, detail="Кампания не найдена")
     # рекламодатель видит только свою

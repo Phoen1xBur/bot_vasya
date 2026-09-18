@@ -70,11 +70,44 @@ async def init_payment(profile: dict = Depends(require_telegram_user), body: dic
         description = "Донат в поддержку проекта Bot Vasya"
         ptype = PaymentType.DONATION
     elif payment_type == "ad_campaign":
-        amount = int(body.get("amount", 0))
-        campaign_id = body.get("campaign_id")
-        order_id = _make_order_id(f"ad_{campaign_id}", user_id)
-        description = f"Оплата рекламы (кампания #{campaign_id})"
-        meta = {"campaign_id": campaign_id}
+        from shared.enums import AdCampaignStatus
+        from shared.models.ad_campaign import AdCampaignOrm
+
+        campaign_id = body.get("campaign_id") or meta.get("campaign_id")
+        if campaign_id is None or str(campaign_id).strip() == "":
+            raise HTTPException(status_code=400, detail="Укажите campaign_id")
+        try:
+            cid = int(campaign_id)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Неверный campaign_id")
+        campaign = await AdCampaignOrm.get_by_id(cid)
+        if campaign is None:
+            raise HTTPException(status_code=404, detail="Кампания не найдена")
+        if campaign.advertiser_id != user_id:
+            raise HTTPException(status_code=403, detail="Нет доступа к кампании")
+        st = campaign.status.value if hasattr(campaign.status, "value") else str(campaign.status)
+        # Оплата после AI-одобрения или пока заявка на ручной модерации после сбоя AI
+        payable = {
+            AdCampaignStatus.AI_APPROVED.value,
+            AdCampaignStatus.ADMIN_PENDING.value,
+            "ai_approved",
+            "admin_pending",
+        }
+        if st in (AdCampaignStatus.PAID.value, "paid"):
+            raise HTTPException(status_code=400, detail="Кампания уже оплачена")
+        if st in (AdCampaignStatus.AI_REJECTED.value, AdCampaignStatus.REJECTED.value, "ai_rejected", "rejected"):
+            raise HTTPException(status_code=400, detail="Кампания отклонена, оплата недоступна")
+        if st not in payable:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Кампания ещё не готова к оплате (статус: {st})",
+            )
+        amount = int(campaign.price or 0)
+        if amount <= 0:
+            raise HTTPException(status_code=400, detail="Цена кампании не задана")
+        order_id = _make_order_id(f"ad_{cid}", user_id)
+        description = f"Оплата рекламы (кампания #{cid})"
+        meta = {"campaign_id": cid}
         ptype = PaymentType.AD_CAMPAIGN
     else:
         amount = int(body.get("amount", 0))
