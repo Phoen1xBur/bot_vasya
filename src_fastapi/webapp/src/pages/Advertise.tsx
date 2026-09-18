@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api, ApiError, formatApiDetail } from "../api/client";
 import type { AdRules, AdCampaignResponse } from "../types";
-import { haptic, hapticNotify, hasTelegramInitData } from "../lib/telegram";
+import { haptic, hapticNotify, hasTelegramInitData, getUrlParams } from "../lib/telegram";
 import { soundClick, soundWin } from "../lib/sound";
 import GlassCard from "../components/GlassCard";
 import NeonButton from "../components/NeonButton";
@@ -13,10 +13,12 @@ const FALLBACK_PRICE_PER_1000 = 1000_00; // kopecks; overwritten by /api/ads/rul
 function statusLabel(status: string): string {
   const map: Record<string, string> = {
     ai_pending: "На проверке AI",
-    ai_approved: "Одобрено AI — можно оплатить",
+    ai_approved: "Проверено AI — ждёт админа",
     ai_rejected: "Отклонено AI",
-    admin_pending: "На ручной модерации",
-    approved: "Одобрено админом",
+    admin_pending: "На модерации у админа",
+    approved: "Одобрено — подтвердите оплату",
+    admin_approved_awaiting_client: "Одобрено — подтвердите оплату",
+    awaiting_payment: "Ожидает оплаты",
     rejected: "Отклонено",
     paid: "Оплачено",
     sending: "Отправляется",
@@ -27,9 +29,34 @@ function statusLabel(status: string): string {
   return map[status] || status;
 }
 
+/** Pay only after admin set final price and client is asked to confirm */
 function canPayStatus(status: string): boolean {
-  return status === "ai_approved" || status === "admin_pending";
+  return (
+    status === "admin_approved_awaiting_client" ||
+    status === "awaiting_payment" ||
+    status === "approved"
+  );
 }
+
+function isRejected(status: string): boolean {
+  return status === "ai_rejected" || status === "rejected";
+}
+
+function isPendingReview(status: string): boolean {
+  return (
+    status === "admin_pending" ||
+    status === "ai_pending" ||
+    status === "ai_approved"
+  );
+}
+
+type ViewCampaign = AdCampaignResponse & {
+  text?: string;
+  link?: string;
+  admin_comment?: string | null;
+  price_is_estimate?: boolean;
+  can_pay?: boolean;
+};
 
 export default function Advertise() {
   const [rules, setRules] = useState<AdRules | null>(null);
@@ -40,8 +67,9 @@ export default function Advertise() {
   const [accepted, setAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [paying, setPaying] = useState(false);
-  const [result, setResult] = useState<AdCampaignResponse | null>(null);
+  const [result, setResult] = useState<ViewCampaign | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadingCampaign, setLoadingCampaign] = useState(false);
 
   useEffect(() => {
     api
@@ -56,6 +84,56 @@ export default function Advertise() {
               : "Не удалось загрузить правила";
         setError(msg);
       });
+  }, []);
+
+  // Deep-link / reopen: ?campaign_id=… or latest payable campaign
+  useEffect(() => {
+    const params = getUrlParams();
+    const cid = params.campaign_id;
+    if (!hasTelegramInitData()) return;
+
+    const load = async () => {
+      setLoadingCampaign(true);
+      try {
+        if (cid) {
+          const c = await api.getCampaign(String(cid));
+          setResult({
+            campaign_id: c.id || c.campaign_id || String(cid),
+            status: c.status,
+            ai_verdict: c.ai_verdict,
+            price: c.price,
+            text: c.text,
+            link: c.link,
+            admin_comment: c.admin_comment,
+            price_is_estimate: c.price_is_estimate,
+            can_pay: c.can_pay,
+          });
+          return;
+        }
+        const mine = await api.getMyCampaigns();
+        const payable = (mine.campaigns || []).find(
+          (c) => canPayStatus(c.status) && (c.can_pay || c.price > 0)
+        );
+        if (payable) {
+          setResult({
+            campaign_id: payable.id || payable.campaign_id,
+            status: payable.status,
+            ai_verdict: payable.ai_verdict,
+            price: payable.price,
+            text: payable.text,
+            link: payable.link,
+            admin_comment: payable.admin_comment,
+            price_is_estimate: payable.price_is_estimate,
+            can_pay: payable.can_pay,
+          });
+        }
+      } catch {
+        // ignore — form still usable
+      } finally {
+        setLoadingCampaign(false);
+      }
+    };
+    load();
   }, []);
 
   const targetNum = parseInt(target, 10) || 0;
@@ -93,8 +171,14 @@ export default function Advertise() {
         contact: contact.trim(),
         rules_accepted: accepted,
       });
-      setResult(res);
-      if (res.status === "ai_rejected") {
+      setResult({
+        ...res,
+        text: text.trim(),
+        link: link.trim(),
+        price_is_estimate: true,
+        can_pay: false,
+      });
+      if (isRejected(res.status)) {
         hapticNotify("error");
       } else {
         hapticNotify("success");
@@ -123,7 +207,7 @@ export default function Advertise() {
     }
     if (!canPayStatus(result.status)) {
       hapticNotify("error");
-      setError("Оплата доступна после одобрения заявки");
+      setError("Оплата доступна после одобрения админом и итоговой цены");
       return;
     }
     setPaying(true);
@@ -155,7 +239,9 @@ export default function Advertise() {
     }
   };
 
-  const rejected = result?.status === "ai_rejected" || result?.status === "rejected";
+  const rejected = result ? isRejected(result.status) : false;
+  const pending = result ? isPendingReview(result.status) : false;
+  const payable = result ? canPayStatus(result.status) : false;
   const aiReason =
     result?.ai_verdict && typeof result.ai_verdict.reason === "string"
       ? result.ai_verdict.reason
@@ -184,6 +270,10 @@ export default function Advertise() {
         </motion.div>
       )}
 
+      {loadingCampaign && !result && (
+        <div className="w-8 h-8 border-2 border-neon-purple/30 border-t-neon-purple rounded-full animate-spin" />
+      )}
+
       <AnimatePresence mode="wait">
         {result ? (
           <motion.div
@@ -200,34 +290,81 @@ export default function Advertise() {
                 className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 ${
                   rejected
                     ? "bg-gradient-to-br from-red-500 to-rose-700"
-                    : "bg-gradient-to-br from-neon-green to-emerald-600"
+                    : payable
+                      ? "bg-gradient-to-br from-neon-green to-emerald-600"
+                      : "bg-gradient-to-br from-amber-400 to-orange-600"
                 }`}
               >
                 <CheckIcon size={32} className="text-white" />
               </motion.div>
               <h2 className="text-xl font-bold">
-                {rejected ? "Заявка отклонена" : "Заявка подана!"}
+                {rejected
+                  ? "Заявка отклонена"
+                  : payable
+                    ? "Подтвердите размещение"
+                    : pending
+                      ? "Заявка на модерации"
+                      : "Заявка подана!"}
               </h2>
               <p className="text-white/50 text-sm mt-1">{statusLabel(result.status)}</p>
-              <p className="text-white/40 text-xs mt-2">
-                Цена: {(result.price / 100).toLocaleString("ru-RU")} ₽
-              </p>
+
+              {payable ? (
+                <p className="text-neon-green text-sm mt-2 font-bold">
+                  Итоговая цена: {(result.price / 100).toLocaleString("ru-RU")} ₽
+                </p>
+              ) : (
+                <p className="text-white/40 text-xs mt-2">
+                  Ориентировочная цена: {(result.price / 100).toLocaleString("ru-RU")} ₽
+                  <span className="block text-white/30 mt-0.5">
+                    Итоговую цену установит админ после проверки
+                  </span>
+                </p>
+              )}
+
+              {(result.text || result.link) && (
+                <div className="mt-4 glass rounded-lg p-3 text-left text-sm">
+                  <p className="text-white/60 mb-1">
+                    {payable ? "Текст к публикации:" : "Ваш текст:"}
+                  </p>
+                  {result.text && (
+                    <p className="text-white/90 text-xs whitespace-pre-wrap mb-2">{result.text}</p>
+                  )}
+                  {result.link && (
+                    <a
+                      href={result.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-neon-cyan text-xs break-all"
+                    >
+                      {result.link}
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {result.admin_comment && (
+                <div className="mt-3 glass rounded-lg p-3 text-left text-sm">
+                  <p className="text-white/60 mb-1">Комментарий админа:</p>
+                  <p className="text-white/80 text-xs whitespace-pre-wrap">{result.admin_comment}</p>
+                </div>
+              )}
+
               {aiReason && (
                 <div className="mt-4 glass rounded-lg p-3 text-left text-sm">
                   <p className="text-white/60 mb-1">Комментарий модерации:</p>
                   <p className="text-white/80 text-xs whitespace-pre-wrap">{aiReason}</p>
                 </div>
               )}
-              {result.ai_verdict && !aiReason && (
-                <div className="mt-4 glass rounded-lg p-3 text-left text-sm">
-                  <p className="text-white/60 mb-1">AI-вердикт:</p>
-                  <pre className="text-white/80 whitespace-pre-wrap text-xs">
-                    {JSON.stringify(result.ai_verdict, null, 2)}
-                  </pre>
-                </div>
+
+              {pending && (
+                <p className="text-amber-300/80 text-xs mt-4 px-2">
+                  Админ проверит текст, при необходимости отредактирует и укажет итоговую цену.
+                  После этого вы получите уведомление для подтверждения и оплаты.
+                </p>
               )}
+
               <div className="mt-6 flex flex-col gap-3 items-center">
-                {canPayStatus(result.status) && (
+                {payable && (
                   <NeonButton
                     variant="green"
                     size="lg"
@@ -237,7 +374,7 @@ export default function Advertise() {
                   >
                     {paying
                       ? "Открываем оплату..."
-                      : `ОПЛАТИТЬ ${(result.price / 100).toLocaleString("ru-RU")} ₽`}
+                      : `ПОДТВЕРДИТЬ И ОПЛАТИТЬ ${(result.price / 100).toLocaleString("ru-RU")} ₽`}
                   </NeonButton>
                 )}
                 <NeonButton
@@ -284,7 +421,7 @@ export default function Advertise() {
                   <span className="text-neon-cyan font-bold">
                     {(pricePer1000 / 100).toLocaleString("ru-RU")} ₽
                   </span>{" "}
-                  за 1000 чел.
+                  за 1000 чел. (ориентировочно)
                 </p>
               </GlassCard>
             )}
@@ -342,11 +479,16 @@ export default function Advertise() {
 
               {estimate > 0 && (
                 <div className="glass rounded-lg px-4 py-2 text-sm flex justify-between items-center">
-                  <span className="text-white/60">Примерная цена:</span>
+                  <span className="text-white/60">Ориентировочная цена:</span>
                   <span className="text-neon-green font-bold">
                     {(estimate / 100).toLocaleString("ru-RU")} ₽
                   </span>
                 </div>
+              )}
+              {estimate > 0 && (
+                <p className="text-white/35 text-[11px] -mt-1">
+                  Не финальная: админ укажет итоговую цену после проверки текста
+                </p>
               )}
 
               <label className="flex items-start gap-3 cursor-pointer">

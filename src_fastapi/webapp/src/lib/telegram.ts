@@ -59,6 +59,7 @@ export interface UrlParams {
   room: string | null;
   initiator: string | null;
   target: string | null;
+  campaign_id: string | null;
 }
 
 export function getTelegramWebApp() {
@@ -112,6 +113,7 @@ export function getUrlParams(): UrlParams {
     room: u.get("room"),
     initiator: u.get("initiator"),
     target: u.get("target"),
+    campaign_id: u.get("campaign_id"),
   };
 }
 

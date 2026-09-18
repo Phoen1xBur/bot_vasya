@@ -134,9 +134,16 @@ export const api = {
     api.post<import("../types").AdCampaignResponse>("/api/ads/campaigns", body),
   getCampaigns: (status?: string) =>
     api.get<{ campaigns: import("../types").AdCampaign[] }>("/api/ads/campaigns", { status }),
-  approveCampaign: (id: string, comment: string) =>
-    api.post<{ ok: boolean; campaign_id: string; selected_chats: number[]; actual_unique_users: number; within_tolerance: boolean }>(
-      `/api/ads/campaigns/${id}/approve`, { comment }),
+  getMyCampaigns: () =>
+    api.get<{ campaigns: import("../types").AdCampaign[] }>("/api/ads/my-campaigns"),
+  getCampaign: (id: string) =>
+    api.get<import("../types").AdCampaign>(`/api/ads/campaigns/${id}`),
+  approveCampaign: (
+    id: string,
+    body: { comment?: string; text?: string; price_rub?: number; price?: number }
+  ) =>
+    api.post<{ ok: boolean; campaign_id: string; status: string; price: number; text: string; selected_chats: number[]; actual_unique_users: number; within_tolerance: boolean }>(
+      `/api/ads/campaigns/${id}/approve`, body),
   rejectCampaign: (id: string, comment: string) =>
     api.post<{ ok: boolean; campaign_id: string }>(`/api/ads/campaigns/${id}/reject`, { comment }),
   // ---- Admin ----

@@ -67,6 +67,7 @@ export interface AdRules {
 
 export interface AdCampaign {
   id: string;
+  campaign_id?: string;
   advertiser_id: number;
   text: string;
   link: string;
@@ -80,6 +81,8 @@ export interface AdCampaign {
   actual_reach?: number | null;
   created_at: string | null;
   sent_at: string | null;
+  price_is_estimate?: boolean;
+  can_pay?: boolean;
 }
 
 export interface AdCampaignResponse {
@@ -87,6 +90,11 @@ export interface AdCampaignResponse {
   status: string;
   ai_verdict: Record<string, unknown> | null;
   price: number;
+  text?: string;
+  link?: string;
+  admin_comment?: string | null;
+  price_is_estimate?: boolean;
+  can_pay?: boolean;
 }
 
 export interface AdminStats {

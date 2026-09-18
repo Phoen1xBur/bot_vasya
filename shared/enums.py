@@ -75,10 +75,12 @@ class SubscriptionStatus(Enum):
 class AdCampaignStatus(Enum):
     DRAFT = "draft"
     AI_PENDING = "ai_pending"
-    AI_APPROVED = "ai_approved"
+    AI_APPROVED = "ai_approved"  # legacy / AI signal only; not payable
     AI_REJECTED = "ai_rejected"
     ADMIN_PENDING = "admin_pending"
-    APPROVED = "approved"
+    APPROVED = "approved"  # legacy alias of admin_approved_awaiting_client
+    ADMIN_APPROVED_AWAITING_CLIENT = "admin_approved_awaiting_client"
+    AWAITING_PAYMENT = "awaiting_payment"
     REJECTED = "rejected"
     PAID = "paid"
     SENDING = "sending"

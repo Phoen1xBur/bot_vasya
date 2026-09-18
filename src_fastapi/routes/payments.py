@@ -86,25 +86,35 @@ async def init_payment(profile: dict = Depends(require_telegram_user), body: dic
         if campaign.advertiser_id != user_id:
             raise HTTPException(status_code=403, detail="Нет доступа к кампании")
         st = campaign.status.value if hasattr(campaign.status, "value") else str(campaign.status)
-        # Оплата после AI-одобрения или пока заявка на ручной модерации после сбоя AI
+        # Оплата только после админ-одобрения с итоговой ценой (не ориентировочной)
         payable = {
-            AdCampaignStatus.AI_APPROVED.value,
-            AdCampaignStatus.ADMIN_PENDING.value,
-            "ai_approved",
-            "admin_pending",
+            AdCampaignStatus.ADMIN_APPROVED_AWAITING_CLIENT.value,
+            AdCampaignStatus.AWAITING_PAYMENT.value,
+            AdCampaignStatus.APPROVED.value,  # legacy
+            "admin_approved_awaiting_client",
+            "awaiting_payment",
+            "approved",
         }
-        if st in (AdCampaignStatus.PAID.value, "paid"):
+        if st in (AdCampaignStatus.PAID.value, "paid", AdCampaignStatus.SENDING.value, "sending", AdCampaignStatus.SENT.value, "sent"):
             raise HTTPException(status_code=400, detail="Кампания уже оплачена")
         if st in (AdCampaignStatus.AI_REJECTED.value, AdCampaignStatus.REJECTED.value, "ai_rejected", "rejected"):
             raise HTTPException(status_code=400, detail="Кампания отклонена, оплата недоступна")
         if st not in payable:
             raise HTTPException(
                 status_code=400,
-                detail=f"Кампания ещё не готова к оплате (статус: {st})",
+                detail=f"Оплата доступна после одобрения админом и итоговой цены (статус: {st})",
             )
         amount = int(campaign.price or 0)
         if amount <= 0:
-            raise HTTPException(status_code=400, detail="Цена кампании не задана")
+            raise HTTPException(status_code=400, detail="Итоговая цена кампании не задана")
+        # Client confirmed → awaiting_payment until webhook
+        if st in (
+            AdCampaignStatus.ADMIN_APPROVED_AWAITING_CLIENT.value,
+            AdCampaignStatus.APPROVED.value,
+            "admin_approved_awaiting_client",
+            "approved",
+        ):
+            await AdCampaignOrm.update(cid, status=AdCampaignStatus.AWAITING_PAYMENT)
         order_id = _make_order_id(f"ad_{cid}", user_id)
         description = f"Оплата рекламы (кампания #{cid})"
         meta = {"campaign_id": cid}
@@ -298,13 +308,46 @@ async def _fulfill_payment(payment: PaymentOrm, payload: dict) -> None:
         elif payment.payment_type == PaymentType.AD_CAMPAIGN:
             from shared.enums import AdCampaignStatus
             from shared.models.ad_campaign import AdCampaignOrm
+            from shared.ad_targeting import select_chats_for_target
+            from shared.messaging import get_bus
 
             campaign_id = meta.get("campaign_id")
             if campaign_id:
-                await AdCampaignOrm.update(
-                    int(campaign_id), status=AdCampaignStatus.PAID
-                )
-                pay_log.info("Рекламная кампания #%s оплачена", campaign_id)
+                cid = int(campaign_id)
+                campaign = await AdCampaignOrm.get_by_id(cid)
+                if campaign is None:
+                    pay_log.error("Ad campaign #%s missing on fulfill", cid)
+                else:
+                    chats = campaign.selected_chats or []
+                    if not chats:
+                        targeting = await select_chats_for_target(campaign.target_unique_users)
+                        chats = targeting.selected_chats
+                        await AdCampaignOrm.update(
+                            cid,
+                            selected_chats=chats,
+                            actual_reach=targeting.total_unique_users,
+                        )
+                    from datetime import datetime
+                    await AdCampaignOrm.update(cid, status=AdCampaignStatus.PAID)
+                    bus = get_bus()
+                    await bus.publish(
+                        "api.ad.send",
+                        {
+                            "campaign_id": cid,
+                            "chat_ids": chats,
+                            "text": campaign.text,
+                            "link": campaign.link,
+                        },
+                    )
+                    await AdCampaignOrm.update(
+                        cid,
+                        status=AdCampaignStatus.SENT,
+                        sent_at=datetime.now(),
+                    )
+                    pay_log.info("Рекламная кампания #%s оплачена, рассылка в %s чатов", cid, len(chats))
+                    await _notify_admins_payment(
+                        payment, extra=f"ad_campaign=#{cid} chats={len(chats)}"
+                    )
 
         elif payment.payment_type == PaymentType.ORDER:
             from shared.models.order import OrderOrm

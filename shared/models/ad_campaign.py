@@ -71,6 +71,19 @@ class AdCampaignOrm(Base):
             return c
 
 
+    @staticmethod
+    async def list_by_advertiser(advertiser_id: int) -> list["AdCampaignOrm"]:
+        async with async_session_factory() as session:
+            q = (
+                select(AdCampaignOrm)
+                .filter(AdCampaignOrm.advertiser_id == advertiser_id)
+                .order_by(AdCampaignOrm.created_at.desc())
+            )
+            result = await session.execute(q)
+            return result.scalars().all()
+
+
+
 class ChatUniqueUsersOrm(Base):
     """Кэш уникальных пользователей по чатам для таргетинга рекламы.
 

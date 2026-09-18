@@ -94,6 +94,10 @@ async def start_bus_consumer() -> None:
             # Обработка событий от API (например, рассылка рекламы)
             if routing_key == "ad.send" or routing_key.endswith(".ad.send"):
                 await _handle_ad_send(payload)
+            elif routing_key == "ad.submitted" or routing_key.endswith(".ad.submitted"):
+                await _handle_payment_received(payload)  # DM admins (same shape)
+            elif routing_key == "ad.approved" or routing_key.endswith(".ad.approved"):
+                await _handle_ad_approved(payload)
             elif routing_key == "game.finished" or routing_key.endswith(".game.finished"):
                 await _handle_game_finished(payload)
             elif routing_key == "payment.received" or routing_key.endswith(".payment.received"):

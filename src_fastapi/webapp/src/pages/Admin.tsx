@@ -19,7 +19,9 @@ const STATUS_RU: Record<string, string> = {
   ai_approved: "ИИ одобрил",
   ai_rejected: "ИИ отклонил",
   admin_pending: "Ждёт админа",
-  approved: "Одобрено",
+  approved: "Одобрено (ждёт клиента)",
+  admin_approved_awaiting_client: "Одобрено — ждёт клиента",
+  awaiting_payment: "Ожидает оплаты",
   rejected: "Отклонено",
   paid: "Оплачено",
   sending: "Рассылка",
@@ -167,20 +169,22 @@ export default function Admin() {
 // ---- Campaigns Tab ----
 function CampaignsTab() {
   const [campaigns, setCampaigns] = useState<AdCampaign[]>([]);
-  const [filter, setFilter] = useState<string>("all");
+  const [filter, setFilter] = useState<string>("admin_pending");
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
   const [comment, setComment] = useState("");
+  const [editText, setEditText] = useState("");
+  const [priceRub, setPriceRub] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
       const status = filter === "all" ? undefined : filter;
-      // Try the ads campaigns endpoint with status filter
       const res = await api.getCampaigns(status);
       setCampaigns(res.campaigns);
     } catch {
-      // Fallback to admin campaigns endpoint (no filter)
       try {
         const res = await api.getAdminCampaigns();
         const filtered = filter === "all" ? res.campaigns : res.campaigns.filter((c) => c.status === filter);
@@ -195,29 +199,66 @@ function CampaignsTab() {
 
   useEffect(() => { load(); }, [filter]);
 
+  const openAction = (c: AdCampaign) => {
+    setActionId(c.id);
+    setComment(c.admin_comment || "");
+    setEditText(c.text || "");
+    setPriceRub(c.price > 0 ? String(Math.round(c.price / 100)) : "");
+    setActionError(null);
+  };
+
   const handleApprove = async (id: string) => {
+    const rub = Number(String(priceRub).replace(",", "."));
+    if (!Number.isFinite(rub) || rub <= 0) {
+      setActionError("Укажите итоговую цену в ₽ (> 0)");
+      hapticNotify("error");
+      return;
+    }
+    if (!editText.trim()) {
+      setActionError("Текст поста не может быть пустым");
+      hapticNotify("error");
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
     haptic("medium");
     try {
-      await api.approveCampaign(id, comment);
+      await api.approveCampaign(id, {
+        comment: comment.trim(),
+        text: editText.trim(),
+        price_rub: rub,
+      });
       hapticNotify("success");
       setActionId(null);
       setComment("");
+      setEditText("");
+      setPriceRub("");
       load();
     } catch (e) {
       hapticNotify("error");
+      setActionError(e instanceof ApiError ? formatApiDetail(e.detail) || e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   };
 
   const handleReject = async (id: string) => {
+    setBusy(true);
+    setActionError(null);
     haptic("medium");
     try {
       await api.rejectCampaign(id, comment);
       hapticNotify("success");
       setActionId(null);
       setComment("");
+      setEditText("");
+      setPriceRub("");
       load();
-    } catch {
+    } catch (e) {
       hapticNotify("error");
+      setActionError(e instanceof ApiError ? formatApiDetail(e.detail) || e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -225,12 +266,31 @@ function CampaignsTab() {
     ai_pending: "bg-amber-500/20 text-amber-400",
     ai_approved: "bg-cyan-500/20 text-cyan-400",
     ai_rejected: "bg-red-500/20 text-red-400",
+    admin_pending: "bg-amber-500/20 text-amber-400",
     approved: "bg-green-500/20 text-green-400",
+    admin_approved_awaiting_client: "bg-green-500/20 text-green-400",
+    awaiting_payment: "bg-emerald-500/20 text-emerald-400",
     rejected: "bg-red-500/20 text-red-400",
+    paid: "bg-blue-500/20 text-blue-400",
     sent: "bg-blue-500/20 text-blue-400",
   };
 
-  const filters = ["all", "ai_pending", "ai_approved", "ai_rejected", "approved", "rejected"];
+  const filters = [
+    "admin_pending",
+    "admin_approved_awaiting_client",
+    "awaiting_payment",
+    "ai_rejected",
+    "rejected",
+    "paid",
+    "sent",
+    "all",
+  ];
+
+  const reviewable = (status: string) =>
+    status === "admin_pending" ||
+    status === "ai_pending" ||
+    status === "ai_approved" ||
+    status === "ai_rejected";
 
   if (loading) {
     return (
@@ -242,7 +302,6 @@ function CampaignsTab() {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Filters */}
       <div className="flex gap-1 overflow-x-auto pb-1">
         {filters.map((f) => (
           <button
@@ -272,16 +331,18 @@ function CampaignsTab() {
               </span>
               <span className="text-white/40 text-xs">{new Date(c.created_at ?? "").toLocaleString("ru-RU")}</span>
             </div>
-            <p className="text-sm text-white/80 mb-1">{c.text}</p>
+            <p className="text-sm text-white/80 mb-1 whitespace-pre-wrap">{c.text}</p>
             <a href={c.link} target="_blank" rel="noopener" className="text-neon-cyan text-xs hover:underline">{c.link}</a>
-            <div className="flex gap-3 text-xs text-white/50 mt-2">
+            <div className="flex gap-3 text-xs text-white/50 mt-2 flex-wrap">
               <span>🎯 {c.target_unique_users}</span>
-              <span>💰 {(c.price / 100).toLocaleString("ru-RU")} ₽</span>
+              <span>
+                💰 {(c.price / 100).toLocaleString("ru-RU")} ₽
+                {c.price_is_estimate || reviewable(c.status) ? " (ориентир.)" : " (итог)"}
+              </span>
               <span>👤 {c.advertiser_id}</span>
               {c.contact && <span>📞 {c.contact}</span>}
             </div>
 
-            {/* AI verdict */}
             {c.ai_verdict && (
               <div className="glass rounded-lg p-2 mt-2 text-xs">
                 <p className="text-white/50 mb-1">AI-вердикт:</p>
@@ -289,16 +350,32 @@ function CampaignsTab() {
               </div>
             )}
 
-            {/* Admin comment */}
             {c.admin_comment && (
               <p className="text-white/50 text-xs mt-2">Админ: {c.admin_comment}</p>
             )}
 
-            {/* Action buttons */}
-            {(c.status === "ai_approved" || c.status === "ai_pending") && (
+            {reviewable(c.status) && (
               <div className="mt-3">
                 {actionId === c.id ? (
                   <div className="flex flex-col gap-2">
+                    <label className="text-white/50 text-xs">Текст поста (можно править)</label>
+                    <textarea
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      rows={4}
+                      className="glass rounded-lg px-3 py-2 text-xs outline-none resize-none"
+                    />
+                    <label className="text-white/50 text-xs">Итоговая цена, ₽</label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={priceRub}
+                      onChange={(e) => setPriceRub(e.target.value)}
+                      placeholder="например 500"
+                      className="glass rounded-lg px-3 py-2 text-xs outline-none"
+                    />
+                    <label className="text-white/50 text-xs">Комментарий клиенту</label>
                     <textarea
                       value={comment}
                       onChange={(e) => setComment(e.target.value)}
@@ -306,21 +383,22 @@ function CampaignsTab() {
                       rows={2}
                       className="glass rounded-lg px-3 py-2 text-xs outline-none resize-none"
                     />
-                    <div className="flex gap-2">
-                      <NeonButton variant="green" size="sm" onClick={() => handleApprove(c.id)}>
-                        <span className="flex items-center gap-1"><CheckIcon size={14} /> Одобрить</span>
+                    {actionError && <p className="text-red-400 text-xs">{actionError}</p>}
+                    <div className="flex gap-2 flex-wrap">
+                      <NeonButton variant="green" size="sm" disabled={busy} onClick={() => handleApprove(c.id)}>
+                        <span className="flex items-center gap-1"><CheckIcon size={14} /> Одобрить с ценой</span>
                       </NeonButton>
-                      <NeonButton variant="danger" size="sm" onClick={() => handleReject(c.id)}>
+                      <NeonButton variant="danger" size="sm" disabled={busy} onClick={() => handleReject(c.id)}>
                         <span className="flex items-center gap-1"><XIcon size={14} /> Отклонить</span>
                       </NeonButton>
-                      <NeonButton variant="cyan" size="sm" onClick={() => { setActionId(null); setComment(""); }}>
+                      <NeonButton variant="cyan" size="sm" disabled={busy} onClick={() => { setActionId(null); setComment(""); setActionError(null); }}>
                         Отмена
                       </NeonButton>
                     </div>
                   </div>
                 ) : (
-                  <NeonButton variant="purple" size="sm" onClick={() => { setActionId(c.id); setComment(""); }}>
-                    Действие
+                  <NeonButton variant="purple" size="sm" onClick={() => openAction(c)}>
+                    Проверить / цена
                   </NeonButton>
                 )}
               </div>
