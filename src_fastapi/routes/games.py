@@ -34,7 +34,7 @@ def _assert_ttt_participant(room, user_id: int) -> None:
 async def create_room(body: dict = Body(...), profile: dict = Depends(require_telegram_user)):
     """Создать комнату.
 
-    body: {game_type: "ttt"|"roulette"|"slots", chat_id, target_id?, bet}
+    body: {game_type: "ttt"|"roulette"|"slots"|"blackjack", chat_id, target_id?, bet}
     """
     game_type_str = body.get("game_type", "")
     try:
@@ -51,6 +51,23 @@ async def create_room(body: dict = Body(...), profile: dict = Depends(require_te
 
     bet = int(body.get("bet", 0))
     target_id = body.get("target_id")
+
+
+    # Sticky-комната для соло-игр: переиспользуем активную того же типа в том же чате
+    existing = await GameRoomOrm.get_active_for_user(profile["id"])
+    if existing:
+        same = (
+            existing.game_type == game_type
+            and int(existing.chat_id) == int(chat_id)
+        )
+        if same and game_type in (GameType.SLOTS, GameType.BLACKJACK, GameType.ROULETTE):
+            return await game_service.get_room_state_view(existing)
+        # смена игры / чата — закрываем залипшую комнату
+        if existing.game_type != game_type or int(existing.chat_id) != int(chat_id):
+            await GameRoomOrm.update(str(existing.id), status=GameRoomStatus.CANCELLED)
+        elif game_type == GameType.TTT:
+            raise HTTPException(status_code=409, detail="У вас уже есть активная игра")
+
 
 
     # Для TTT нужен target_id
@@ -175,6 +192,8 @@ async def game_action(
             result = await game_service.roulette_spin(room, user_id, action)
         elif room.game_type == GameType.SLOTS:
             result = await game_service.slots_spin(room, user_id, action)
+        elif room.game_type == GameType.BLACKJACK:
+            result = await game_service.blackjack_action(room, user_id, action)
         else:
             raise HTTPException(status_code=400, detail="Неизвестный тип игры")
         return result
@@ -200,6 +219,11 @@ async def cancel_room(room_id: str, profile: dict = Depends(require_telegram_use
         group_user = await GroupUserOrm.get_group_user(room.initiator_id, room.chat_id)
         if group_user:
             await group_user.money_plus(room.bet)
+        # TTT: target also paid on join when ACTIVE
+        if room.game_type == GameType.TTT and room.status == GameRoomStatus.ACTIVE and room.target_id:
+            gu_t = await GroupUserOrm.get_group_user(room.target_id, room.chat_id)
+            if gu_t:
+                await gu_t.money_plus(room.bet)
 
     if room.game_type == GameType.ROULETTE:
         state = dict(room.state or {})
