@@ -189,6 +189,10 @@ class GroupUserOrm(Base):
         return link
 
     async def money_plus(self, amount: int) -> None:
+        """Credit coins. amount must be > 0 (never pass a negative — that would subtract)."""
+        amount = int(amount)
+        if amount <= 0:
+            raise ValueError(f"money_plus requires amount > 0, got {amount}")
         async with async_session_factory() as session:
             group_user = await session.get(GroupUserOrm, self.id)
             group_user.money += amount
@@ -196,6 +200,10 @@ class GroupUserOrm(Base):
             await session.commit()
 
     async def money_minus(self, amount: int) -> None:
+        """Debit coins. amount must be > 0 (never pass a negative — that would ADD)."""
+        amount = int(amount)
+        if amount <= 0:
+            raise ValueError(f"money_minus requires amount > 0, got {amount}")
         async with async_session_factory() as session:
             group_user = await session.get(GroupUserOrm, self.id)
             group_user.money -= amount

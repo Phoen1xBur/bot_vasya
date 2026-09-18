@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { api, ApiError } from "../api/client";
+import { api, ApiError, formatApiDetail } from "../api/client";
 import type { AdRules, AdCampaignResponse } from "../types";
 import { haptic, hapticNotify } from "../lib/telegram";
 import { soundClick, soundWin } from "../lib/sound";
@@ -54,7 +54,7 @@ export default function Advertise() {
       hapticNotify("success");
       soundWin();
     } catch (e) {
-      const msg = e instanceof ApiError ? (e.detail?.toString?.() ?? e.message) : e instanceof Error ? e.message : String(e);
+      const msg = e instanceof ApiError ? (formatApiDetail(e.detail) || e.message) : e instanceof Error ? e.message : String(e);
       setError(msg);
       hapticNotify("error");
     } finally {
