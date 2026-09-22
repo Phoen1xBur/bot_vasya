@@ -1,7 +1,13 @@
 name: Deploy to Server
+
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]  # Запускать при пуше в main
+env:
+  SERVER_IP: "80.74.30.4"  # IP сервера, где находится Вася
+  SSH_USER: "root"          # Пользователь для SSH
+  REPO_DIR: "/root/projects/bot_vasya"  # Путь к репозиторию на сервере
+  DOCKER_COMPOSE_FILE: "docker-compose.yml"  # Имя docker-compose файла
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -13,8 +19,6 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          echo "secret added to ~/.ssh/id_ed25519"
-          cat ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           eval $(ssh-agent -s)
           ssh-add ~/.ssh/id_ed25519
@@ -22,8 +26,31 @@ jobs:
       - name: Add server to known_hosts
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan 80.74.30.4 >> ~/.ssh/known_hosts
+          ssh-keyscan ${{ env.SERVER_IP }} >> ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-      - name: Test SSH connection
-        run: ssh -o StrictHostKeyChecking=no root@80.74.30.4 "ls -al"
+      - name: Pull latest code on server
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} "
+            cd ${{ env.REPO_DIR }} && \
+            git fetch origin && \
+            git reset --hard origin/main && \
+            git clean -fd
+          "
+
+      - name: Restart Docker containers
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} "
+            cd ${{ env.REPO_DIR }} && \
+            docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} down && \
+            docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} up -d --build
+          "
+
+      - name: Verify deployment
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} "
+            cd ${{ env.REPO_DIR }} && \
+            docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} ps && \
+            echo '=== Bot logs (last 10 lines) ===' && \
+            docker logs --tail 10 bot_vasya-bot-1
+          "
