@@ -39,11 +39,26 @@ export default function App() {
     if (tg?.colorScheme) setTheme(tg.colorScheme);
     const params = getUrlParams();
     setPage(params.page);
-    if (isTelegramOnlyPage(params.page, params) && !isInsideTelegram()) {
-      setBlocked(true);
-    }
+    const refreshGate = () => {
+      if (isTelegramOnlyPage(params.page, params) && !isInsideTelegram()) {
+        setBlocked(true);
+      } else {
+        setBlocked(false);
+      }
+    };
+    refreshGate();
+    // Desktop Telegram may expose tgWebAppData in the hash a tick after open
+    const tGate1 = window.setTimeout(refreshGate, 50);
+    const tGate2 = window.setTimeout(refreshGate, 300);
+    const onHash = () => refreshGate();
+    window.addEventListener("hashchange", onHash);
     const timer = setTimeout(() => setLoading(false), 1500);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      window.clearTimeout(tGate1);
+      window.clearTimeout(tGate2);
+      window.removeEventListener("hashchange", onHash);
+    };
   }, []);
 
   useEffect(() => {

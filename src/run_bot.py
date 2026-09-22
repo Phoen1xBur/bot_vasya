@@ -10,7 +10,6 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
-from time import sleep
 
 # Python 3.14: pyrogram calls get_event_loop() at import time.
 try:
@@ -80,32 +79,36 @@ async def start_bot() -> None:
 
 
 async def start_bus_consumer() -> None:
-    """Слушаем события от API (webapp-действия, завершение игр и т.д.)."""
-    try:
-        from messaging.rabbitmq import ensure_bus
+    """Слушаем события от API: webapp-действия, завершение игр и т.д."""
+    while True:
+        try:
+            from messaging.rabbitmq import ensure_bus
 
-        bus = await ensure_bus()
-        if not bus.connected:
-            logger.info("RabbitMQ offline — бот без шины")
-            return
+            bus = await ensure_bus()
+            if not bus.connected:
+                logger.info("RabbitMQ offline — бот без шины")
+                await asyncio.sleep(10)
+                continue
 
-        async def on_event(routing_key: str, payload: dict) -> None:
-            logger.debug("Bot bus event key=%s payload=%s", routing_key, payload)
-            # Обработка событий от API (например, рассылка рекламы)
-            if routing_key == "ad.send" or routing_key.endswith(".ad.send"):
-                await _handle_ad_send(payload)
-            elif routing_key == "ad.submitted" or routing_key.endswith(".ad.submitted"):
-                await _handle_payment_received(payload)  # DM admins (same shape)
-            elif routing_key == "ad.approved" or routing_key.endswith(".ad.approved"):
-                await _handle_ad_approved(payload)
-            elif routing_key == "game.finished" or routing_key.endswith(".game.finished"):
-                await _handle_game_finished(payload)
-            elif routing_key == "payment.received" or routing_key.endswith(".payment.received"):
-                await _handle_payment_received(payload)
+            async def on_event(routing_key: str, payload: dict) -> None:
+                logger.debug("Bot bus event key=%s payload=%s", routing_key, payload)
+                # Обработка событий от API (например, рассылка рекламы)
+                if routing_key == "ad.send" or routing_key.endswith(".ad.send"):
+                    await _handle_ad_send(payload)
+                elif routing_key == "ad.submitted" or routing_key.endswith(".ad.submitted"):
+                    await _handle_payment_received(payload)  # DM admins (same shape)
+                elif routing_key == "ad.approved" or routing_key.endswith(".ad.approved"):
+                    await _handle_ad_approved(payload)
+                elif routing_key == "game.finished" or routing_key.endswith(".game.finished"):
+                    await _handle_game_finished(payload)
+                elif routing_key == "payment.received" or routing_key.endswith(".payment.received"):
+                    await _handle_payment_received(payload)
 
-        await bus.consume(queue_name="vasya.bot", binding_keys=["api.#"], handler=on_event)
-    except Exception:
-        logger.warning("Шина недоступна", exc_info=True)
+            await bus.consume(queue_name="vasya.bot", binding_keys=["api.#"], handler=on_event)
+            break
+        except Exception:
+            logger.warning("Шина недоступна, повторная попытка через 10 секунд...", exc_info=True)
+            await asyncio.sleep(10)
 
 
 async def _handle_ad_send(payload: dict) -> None:
@@ -119,7 +122,6 @@ async def _handle_ad_send(payload: dict) -> None:
             await bot.send_message(chat_id, message)
         except Exception:
             logger.warning("Не удалось отправить рекламу в чат %s", chat_id)
-
 
 
 async def _handle_payment_received(payload: dict) -> None:
@@ -173,7 +175,7 @@ if __name__ == "__main__":
         asyncio.run(on_startup())
     except KeyboardInterrupt:
         logger.info("Остановка...")
-        sleep(2)
+        await asyncio.sleep(2)
         raise SystemExit(0)
     except Exception:
         logger.exception("Необработанная ошибка")

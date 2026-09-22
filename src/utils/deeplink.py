@@ -23,6 +23,7 @@ FUNC_TO_SHORT = {
     "minigame_roulette": "mr",
     "minigame_slots": "ms",
     "minigame_ttt": "mt",
+    "minigame_blackjack": "mb",
     "casino": "c",
     "subscribe": "sub",
     "donate": "don",
