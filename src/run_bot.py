@@ -10,6 +10,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+from time import sleep
 
 # Python 3.14: pyrogram calls get_event_loop() at import time.
 try:
@@ -175,7 +176,7 @@ if __name__ == "__main__":
         asyncio.run(on_startup())
     except KeyboardInterrupt:
         logger.info("Остановка...")
-        await asyncio.sleep(2)
+        sleep(2)
         raise SystemExit(0)
     except Exception:
         logger.exception("Необработанная ошибка")
