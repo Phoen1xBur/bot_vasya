@@ -1,23 +1,3 @@
-FUNC_TO_SHORT = {
-    "minigame_roulette": "mr",
-    "minigame_slots": "ms",
-    "minigame_ttt": "mt",
-    "minigame_blackjack": "mb",
-    "casino": "c",
-    "subscribe": "sub",
-    "donate": "don",
-    "advertise": "ad",
-    "profile": "p",
-}
-"""Короткие Telegram start-link payload (лимит 64 символа на итоговый payload).
-
-Формат plaintext (только [A-Za-z0-9_-]), далее encode=True (base64url):
-  {func}[_{chat}][_r{short8}]
-где chat = n{absChatId} для отрицательных / {chatId} для положительных.
-Примеры: mr_n1001234567890_rabcdef12, mt_n1001234567890_r1a2b3c4d, sub
-"""
-
-from __future__ import annotations
 
 import re
 from urllib.parse import parse_qs
@@ -41,6 +21,14 @@ FUNC_TO_SHORT = {
     "advertise": "ad",
     "profile": "p",
 }
+"""Короткие Telegram start-link payload (лимит 64 символа на итоговый payload).
+
+Формат plaintext (только [A-Za-z0-9_-]), далее encode=True (base64url):
+  {func}[_{chat}][_r{short8}]
+где chat = n{absChatId} для отрицательных / {chatId} для положительных.
+Примеры: mr_n1001234567890_rabcdef12, mt_n1001234567890_r1a2b3c4d, sub
+"""
+
 SHORT_TO_FUNC = {v: k for k, v in FUNC_TO_SHORT.items()}
 
 # mr_n100123..._rabcdef12  или  sub  или  c_12345
@@ -193,4 +181,3 @@ def parse_start_args(args: str) -> dict:
         "chat_id": one("chat_id"),
         "room": one("room"),
     }
-
