@@ -35,7 +35,7 @@ jobs:
             git config --global --add safe.directory ${{ env.REPO_DIR }} && \
             cd ${{ env.REPO_DIR }} && \
             git fetch origin && \
-            git reset --hard origin/master && \
+            git reset --hard origin/master
 #            git clean -fd -e .env -e docker-compose.yml -e .env_default
           "
 
