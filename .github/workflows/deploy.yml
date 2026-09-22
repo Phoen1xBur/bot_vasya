@@ -15,10 +15,6 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           echo "secret added to ~/.ssh/id_ed25519"
           cat ~/.ssh/id_ed25519
-          echo ${{ secrets.TEST }}
-          echo "${{ secrets.TEST }}"
-          echo "${{ secrets.TEST }}" > test.txt
-          cat test.txt
           chmod 600 ~/.ssh/id_ed25519
           eval $(ssh-agent -s)
           ssh-add ~/.ssh/id_ed25519
@@ -30,4 +26,4 @@ jobs:
           chmod 644 ~/.ssh/known_hosts
 
       - name: Test SSH connection
-        run: ssh -o StrictHostKeyChecking=no root@80.74.30.4 "echo 'SSH работает!'"compose restart bot"
+        run: ssh -o StrictHostKeyChecking=no root@80.74.30.4 "ls -al"
