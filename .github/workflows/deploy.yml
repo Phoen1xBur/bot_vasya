@@ -36,7 +36,7 @@ jobs:
             cd ${{ env.REPO_DIR }} && \
             git fetch origin && \
             git reset --hard origin/master && \
-            git clean -fd
+#            git clean -fd -e .env -e docker-compose.yml -e .env_default
           "
 
       - name: Restart Docker containers
