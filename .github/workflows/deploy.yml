@@ -32,6 +32,7 @@ jobs:
       - name: Pull latest code on server
         run: |
           ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} "
+            git config --global --add safe.directory ${{ env.REPO_DIR }} && \
             cd ${{ env.REPO_DIR }} && \
             git fetch origin && \
             git reset --hard origin/main && \
