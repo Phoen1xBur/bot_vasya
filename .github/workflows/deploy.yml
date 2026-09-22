@@ -6,21 +6,22 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Install SSH key
-        uses: shimataro/ssh-key-action@v2
-        with:
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          known_hosts: ${{ secrets.KNOWN_HOSTS }}
-
-      - name: Copy files to server
         run: |
-          rsync -avz --delete \
-            -e "ssh -o StrictHostKeyChecking=yes" \
-            ./ root@80.74.30.4:/root/projects/bot_vasya/
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          eval $(ssh-agent -s)
+          ssh-add ~/.ssh/id_ed25519
 
-      - name: Restart bot
+      - name: Add server to known_hosts
         run: |
-          ssh -o StrictHostKeyChecking=yes root@80.74.30.4 \
-            "cd /root/projects/bot_vasya && docker-compose restart bot"
+          mkdir -p ~/.ssh
+          ssh-keyscan 80.74.30.4 >> ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Test SSH connection
+        run: ssh -o StrictHostKeyChecking=no root@80.74.30.4 "echo 'SSH работает!'"compose restart bot"
