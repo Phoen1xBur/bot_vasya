@@ -1,3 +1,14 @@
+FUNC_TO_SHORT = {
+    "minigame_roulette": "mr",
+    "minigame_slots": "ms",
+    "minigame_ttt": "mt",
+    "minigame_blackjack": "mb",
+    "casino": "c",
+    "subscribe": "sub",
+    "donate": "don",
+    "advertise": "ad",
+    "profile": "p",
+}
 """Короткие Telegram start-link payload (лимит 64 символа на итоговый payload).
 
 Формат plaintext (только [A-Za-z0-9_-]), далее encode=True (base64url):
@@ -182,3 +193,4 @@ def parse_start_args(args: str) -> dict:
         "chat_id": one("chat_id"),
         "room": one("room"),
     }
+>>>>>>> 1795811 (feat: add Blackjack deeplink + fix Telegram WebApp detection delay)
