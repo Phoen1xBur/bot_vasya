@@ -193,4 +193,4 @@ def parse_start_args(args: str) -> dict:
         "chat_id": one("chat_id"),
         "room": one("room"),
     }
->>>>>>> 1795811 (feat: add Blackjack deeplink + fix Telegram WebApp detection delay)
+
