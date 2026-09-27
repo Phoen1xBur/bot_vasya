@@ -94,7 +94,14 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'python -m src.run_bot' || exit 1"]
+      # python:*-slim has no procps/pgrep — check PID1 cmdline instead
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import pathlib,sys; sys.exit(0 if b'run_bot' in pathlib.Path('/proc/1/cmdline').read_bytes() else 1)",
+        ]
       interval: 10s
       timeout: 5s
       retries: 3

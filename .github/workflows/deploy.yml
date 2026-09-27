@@ -1,57 +1,106 @@
+# Deploy bot_vasya to production VPS via SSH + docker compose.
+#
+# Required GitHub Actions secrets (repo Settings → Secrets → Actions):
+#   SSH_PRIVATE_KEY  — private key (ed25519/rsa) whose public key is in root's authorized_keys on the VPS
+# Do NOT put TOKEN / DB_PASS / API keys here — they live only in /root/projects/bot_vasya/.env on the server.
+#
 name: Deploy to Server
 
 on:
   push:
-    branches: [ master ]  # Запускать при пуше в master
+    branches: [master]
+  workflow_dispatch:
+
 env:
-  SERVER_IP: "80.74.30.4"  # IP сервера, где находится Вася
-  SSH_USER: "root"          # Пользователь для SSH
-  REPO_DIR: "/root/projects/bot_vasya"  # Путь к репозиторию на сервере
-  DOCKER_COMPOSE_FILE: "docker-compose.yml"  # Имя docker-compose файла
+  SERVER_IP: "80.74.30.4"
+  SSH_USER: "root"
+  REPO_DIR: "/root/projects/bot_vasya"
+  DOCKER_COMPOSE_FILE: "docker-compose.yml"
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install SSH key
+      - name: Setup SSH
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          eval $(ssh-agent -s)
-          ssh-add ~/.ssh/id_ed25519
-
-      - name: Add server to known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan ${{ env.SERVER_IP }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
+          # sanity: key present, no echo of key material
+          test -s ~/.ssh/id_ed25519
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 \
+            "${SSH_USER}@${SERVER_IP}" 'echo ssh_ok'
 
-      - name: Pull latest code on server
+      - name: Sync code on server
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} "
-            git config --global --add safe.directory ${{ env.REPO_DIR }} && \
-            cd ${{ env.REPO_DIR }} && \
-            git fetch origin && \
-            git reset --hard origin/master
-          "
-          
+          set -euo pipefail
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 \
+            "${SSH_USER}@${SERVER_IP}" bash -s <<EOF
+          set -euo pipefail
+          git config --global --add safe.directory ${REPO_DIR} || true
+          cd ${REPO_DIR}
+          # Keep server .env — never overwrite from git
+          test -f .env || { echo "MISSING .env on server"; exit 1; }
+          git fetch origin
+          git reset --hard origin/master
+          echo "deployed_commit=\$(git rev-parse --short HEAD)"
+          EOF
 
-      - name: Restart Docker containers
+      - name: Build and restart stack
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} "
-            cd ${{ env.REPO_DIR }} && \
-            docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} down && \
-            docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} up -d --build
-          "
+          set -euo pipefail
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 \
+            "${SSH_USER}@${SERVER_IP}" bash -s <<EOF
+          set -euo pipefail
+          cd ${REPO_DIR}
+          # Rolling rebuild without full "down" (avoids unnecessary volume/network churn & flapping)
+          docker compose -f ${DOCKER_COMPOSE_FILE} up -d --build --remove-orphans
+          EOF
 
-      - name: Verify deployment
+      - name: Wait for healthy services
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} "
-            cd ${{ env.REPO_DIR }} && \
-            docker compose -f ${{ env.DOCKER_COMPOSE_FILE }} ps && \
-            echo '=== Bot logs (last 10 lines) ===' && \
-            docker logs --tail 10 bot_vasya-bot-1
-          "
+          set -euo pipefail
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 \
+            "${SSH_USER}@${SERVER_IP}" bash -s <<'EOF'
+          set -euo pipefail
+          cd /root/projects/bot_vasya
+          deadline=$((SECONDS+180))
+          while (( SECONDS < deadline )); do
+            bot_h=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' bot_vasya-bot-1 2>/dev/null || echo missing)
+            api_h=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' bot_vasya-api-1 2>/dev/null || echo missing)
+            bot_s=$(docker inspect -f '{{.State.Status}}' bot_vasya-bot-1 2>/dev/null || echo missing)
+            echo "bot=${bot_s}/${bot_h} api=${api_h}"
+            if [[ "$bot_s" == "running" && "$bot_h" == "healthy" && "$api_h" == "healthy" ]]; then
+              echo "health_ok"
+              docker compose ps
+              exit 0
+            fi
+            if [[ "$bot_s" == "restarting" || "$bot_s" == "exited" ]]; then
+              echo "bot_flapping"
+              docker logs --tail 80 bot_vasya-bot-1 || true
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "health_timeout"
+          docker compose ps || true
+          docker logs --tail 80 bot_vasya-bot-1 || true
+          exit 1
+          EOF
+
+      - name: Smoke getMe (token stays on server)
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 \
+            "${SSH_USER}@${SERVER_IP}" bash -s <<'EOF'
+          set -euo pipefail
+          docker exec bot_vasya-bot-1 python -c 'import os,urllib.request,json; t=os.environ["TOKEN"]; d=json.loads(urllib.request.urlopen("https://api.telegram.org/bot"+t+"/getMe",timeout=15).read()); assert d.get("ok"), d; r=d["result"]; print("smoke_ok username=", r.get("username"), "id=", r.get("id"))'
+          EOF
