@@ -178,10 +178,9 @@ export function hapticSelection() {
 }
 
 export function isInsideTelegram(): boolean {
-  const wa = window.Telegram?.WebApp;
-  if (!wa) return false;
-  // initData is empty outside a real Telegram WebApp session
-  return Boolean(wa.initData && wa.initData.length > 0);
+  // Desktop Telegram often leaves WebApp.initData empty and puts data in
+  // location.hash (tgWebAppData=...). getInitData() already covers SDK + hash + query.
+  return Boolean(getInitData());
 }
 
 export function isTelegramOnlyPage(page: PageName, params: UrlParams): boolean {
