@@ -12,11 +12,22 @@ exchange ``notify`` по ключу ``send.#``. Внутренняя шина В
 Если получатель не указан — шлём админу (NOTIFY_DEFAULT_USER_ID).
 Если есть correlation_id (или AMQP correlation_id / reply_to) — публикуем отчёт
 в exchange ``notify`` с ключом ``report.<source>``.
+
+Фото и ответ пользователя (captcha/код):
+    "photo_b64": "<base64 PNG/JPEG>"  — отправится фото, text станет подписью (до 1024)
+    "expect_reply": true, "reply_to": "reply.<source>", "correlation_id": "..."
+Вася добавляет подсказку «ответь реплаем», запоминает message_id в Redis
+(notify:reply:<chat>:<message_id>, живёт NOTIFY_REPLY_TTL_SEC). Когда адресат
+отвечает реплаем на это сообщение, Вася публикует
+{"correlation_id","text","user_id","source"} в exchange ``notify`` с ключом reply_to
+и подтверждает «передал». Считается только ответ самого получателя.
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import html
 import json
 import logging
@@ -25,6 +36,7 @@ from collections import defaultdict, deque
 from typing import Any
 
 from aiogram import Bot
+from aiogram.types import BufferedInputFile
 from aiogram.exceptions import (
     TelegramBadRequest,
     TelegramForbiddenError,
@@ -41,6 +53,15 @@ LEVEL_ICON = {"info": "ℹ️", "warn": "⚠️", "error": "🚨"}
 UNREACHABLE_MARKERS = ("chat not found", "user is deactivated", "peer_id_invalid", "bot was blocked")
 MAX_ATTEMPTS = 3
 MAX_REPORT_FAILED = 200
+MAX_PHOTO_BYTES = 8 * 1024 * 1024
+CAPTION_LIMIT = 1024
+REPLY_HINT = "\n\n↩️ ответь на это сообщение реплаем"
+REPLY_KEY = "notify:reply:{chat}:{mid}"
+_consumer: "NotifyConsumer | None" = None
+
+
+def get_consumer() -> "NotifyConsumer | None":
+    return _consumer
 
 
 class Throttle:
@@ -105,9 +126,12 @@ class NotifyConsumer:
         self.limiter = SourceLimiter(
             settings.NOTIFY_SOURCE_MAX_MSGS_PER_MIN, settings.NOTIFY_SOURCE_MAX_RECIPIENTS_PER_HOUR
         )
+        self.reply_ttl: int = int(getattr(settings, "NOTIFY_REPLY_TTL_SEC", 1200))
         self._redis_factory = redis_factory
         self._redis: Any = None
         self._exchange: Any = None
+        global _consumer
+        _consumer = self
 
     # ---------- Redis: недостижимые получатели ----------
     def _r(self) -> Any:
@@ -129,13 +153,21 @@ class NotifyConsumer:
             logger.warning("redis set failed", exc_info=True)
 
     # ---------- Отправка одному получателю ----------
-    async def _send_one(self, uid: int, text: str, parse_mode: str | None) -> tuple[bool, str]:
-        """Возвращает (успех, причина). Исключения наружу не выпускает."""
+    async def _send_one(self, uid: int, text: str, parse_mode: str | None,
+                        photo: bytes | None = None, out: dict | None = None) -> tuple[bool, str]:
+        """Возвращает (успех, причина). Исключения наружу не выпускает.
+        out["message_id"] — id отправленного сообщения (для expect_reply)."""
         pm = parse_mode
         for attempt in range(1, MAX_ATTEMPTS + 1):
             await self.throttle.wait(uid)
             try:
-                await self.bot.send_message(uid, text, parse_mode=pm)
+                if photo is not None:
+                    msg = await self.bot.send_photo(uid, BufferedInputFile(photo, "image.png"),
+                                                    caption=text, parse_mode=pm)
+                else:
+                    msg = await self.bot.send_message(uid, text, parse_mode=pm)
+                if out is not None:
+                    out["message_id"] = msg.message_id
                 return True, "ok"
             except TelegramRetryAfter as e:
                 logger.warning("retry_after %ss uid=%s", e.retry_after, uid)
@@ -181,6 +213,56 @@ class NotifyConsumer:
             ids.append(int(x))
         return list(dict.fromkeys(ids))
 
+    # ---------- Ответы пользователя (expect_reply) ----------
+    async def _register_reply(self, chat_id: int, message_id: int, reply_to: str, corr: str, source: str) -> None:
+        try:
+            r = self._r()
+            key = REPLY_KEY.format(chat=chat_id, mid=message_id)
+            await r.hset(key, mapping={
+                "reply_to": reply_to, "correlation_id": corr, "user_id": str(chat_id), "source": source,
+                "expires_at": str(int(time.time()) + self.reply_ttl),
+            })
+            await r.expire(key, self.reply_ttl + 86400)  # хвост, чтобы сказать «поздно»
+        except Exception:
+            logger.warning("redis register reply failed", exc_info=True)
+
+    async def pop_reply_context(self, chat_id: int, message_id: int) -> dict[str, str] | None:
+        """Контекст ожидаемого ответа или None. Ключ не удаляется, пока не отправлен ответ."""
+        try:
+            data = await self._r().hgetall(REPLY_KEY.format(chat=chat_id, mid=message_id))
+        except Exception:
+            logger.warning("redis read reply failed", exc_info=True)
+            return None
+        if not data:
+            return None
+        return {(k.decode() if isinstance(k, bytes) else k): (v.decode() if isinstance(v, bytes) else v)
+                for k, v in data.items()}
+
+    async def finish_reply(self, chat_id: int, message_id: int) -> None:
+        try:
+            await self._r().delete(REPLY_KEY.format(chat=chat_id, mid=message_id))
+        except Exception:
+            logger.warning("redis delete reply failed", exc_info=True)
+
+    async def publish_reply(self, ctx: dict[str, str], text: str) -> bool:
+        """Опубликовать ответ пользователя сервису в exchange notify."""
+        if self._exchange is None:
+            return False
+        import aio_pika
+
+        body = json.dumps({"correlation_id": ctx["correlation_id"], "text": text,
+                           "user_id": int(ctx["user_id"]), "source": ctx["source"]}, ensure_ascii=False)
+        try:
+            await self._exchange.publish(
+                aio_pika.Message(body=body.encode(), content_type="application/json",
+                                 correlation_id=ctx["correlation_id"] or None),
+                routing_key=ctx["reply_to"],
+            )
+            return True
+        except Exception:
+            logger.warning("reply publish failed", exc_info=True)
+            return False
+
     async def _report(self, source: str, corr: str, data: dict[str, Any]) -> None:
         if self._exchange is None:
             return
@@ -206,6 +288,26 @@ class NotifyConsumer:
             src_raw = payload.get("source") or routing_key.removeprefix("send.") or "unknown"
             source = "".join(c for c in str(src_raw) if c.isalnum() or c in "-_.")[:40] or "unknown"
             ids = self._ids(payload, self.default_user)
+            photo: bytes | None = None
+            raw_photo = payload.get("photo_b64") or payload.get("photo")
+            if raw_photo:
+                if not isinstance(raw_photo, str) or len(raw_photo) > MAX_PHOTO_BYTES * 4 // 3 + 16:
+                    raise ValueError("photo too large or not a string")
+                try:
+                    photo = base64.b64decode(raw_photo, validate=True)
+                except (binascii.Error, ValueError):
+                    raise ValueError("photo_b64 is not valid base64")
+                if len(photo) > MAX_PHOTO_BYTES:
+                    raise ValueError("photo too large")
+            expect_reply = bool(payload.get("expect_reply"))
+            reply_to = str(payload.get("reply_to") or "")
+            if expect_reply:
+                if len(ids) != 1:
+                    raise ValueError("expect_reply requires exactly one recipient")
+                if reply_to != f"reply.{source}":
+                    raise ValueError("reply_to must be reply.<source>")
+                if not payload.get("correlation_id"):
+                    raise ValueError("expect_reply requires correlation_id")
         except (ValueError, UnicodeDecodeError, TypeError) as e:
             logger.warning("notify: отброшено невалидное сообщение key=%s: %s", routing_key, e)
             return
@@ -232,8 +334,11 @@ class NotifyConsumer:
         if pm == "MarkdownV2":
             label = "".join("\\" + c if c in "_*[]()~`>#+-=|{}.!" else c for c in source)
         full = f"{icon} [{label}] {text}".strip()
-        if len(full) > self.max_text:
-            full = full[: self.max_text - 1] + "…"
+        hint = REPLY_HINT if expect_reply else ""
+        limit = (CAPTION_LIMIT if photo is not None else self.max_text) - len(hint)
+        if len(full) > limit:
+            full = full[: limit - 1] + "…"
+        full += hint
 
         sent, skipped = 0, 0
         failed: list[dict[str, Any]] = []
@@ -242,7 +347,10 @@ class NotifyConsumer:
                 skipped += 1
                 continue
             try:
-                ok, reason = await self._send_one(uid, full, pm)
+                sent_info: dict[str, Any] = {}
+                ok, reason = await self._send_one(uid, full, pm, photo, sent_info)
+                if ok and expect_reply and sent_info.get("message_id"):
+                    await self._register_reply(uid, sent_info["message_id"], reply_to, corr, source)
             except Exception:  # один получатель не должен валить партию
                 logger.exception("notify: неожиданная ошибка uid=%s", uid)
                 ok, reason = False, "internal_error"

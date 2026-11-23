@@ -54,3 +54,37 @@ pika: `pika.URLParameters(url)` (схема `amqps://` включает TLS), з
 ```
 rabbitmqctl set_permissions -p /notify <svc> '^$' '^notify$' '^report\.<svc>$'   # и очередь report.<svc> с биндингом report.<svc> на notify
 ```
+
+## Фото и ответ пользователя (captcha / код подтверждения)
+Дополнительные поля сообщения:
+| поле | описание |
+|---|---|
+| `photo_b64` (или `photo`) | base64 PNG/JPEG до 8 МБ. Уйдёт фото, `text` станет подписью (до 1024 символов) |
+| `expect_reply` | `true` — ждём ответ пользователя. Нужны ровно один получатель, `correlation_id` и `reply_to` |
+| `reply_to` | строго `reply.<source>` (чужие ключи отбрасываются) |
+
+Вася добавляет к тексту подсказку «ответь на это сообщение реплаем» и запоминает
+`message_id` в Redis (`notify:reply:<chat>:<message_id>`, hash: reply_to, correlation_id, user_id, source, expires_at).
+Окно ответа `NOTIFY_REPLY_TTL_SEC` (по умолчанию 1200 с = 20 мин), сама запись живёт ещё сутки,
+чтобы ответить «опоздал».
+
+Когда получатель отвечает **реплаем** на это сообщение, Вася публикует в exchange `notify`
+с ключом `reply_to`: `{"correlation_id","text","user_id","source"}` и отвечает пользователю «Передал ✅».
+Опоздавший ответ — «Ответ опоздал…», реплай от другого человека игнорируется (обычная обработка).
+Обычные сообщения и реплаи на другие сообщения работают как раньше.
+
+### Права для сервиса, который ждёт ответ (админ, на 80.74)
+Очередь и биндинг создаёт админ, сервису нужно только чтение своей очереди:
+```
+rabbitmqctl set_permissions -p /notify <svc> '^reply\.<svc>$' '^notify$' '^reply\.<svc>$'
+# очередь reply.<svc> (durable) + биндинг на exchange notify с ключом reply.<svc>
+```
+У `vasya-bot` уже есть запись в `notify` — отдельных прав для публикации ответов не нужно.
+
+### Пример (pika): отправить и ждать ответ
+```python
+body = {"text": "Капча: введи символы", "source": "svc", "photo_b64": b64, "expect_reply": True,
+        "reply_to": "reply.svc", "correlation_id": cid, "user_id": 123}
+ch.basic_publish("notify", "send.svc", json.dumps(body))
+# затем basic_get / consume очереди reply.svc, фильтр по correlation_id
+```
