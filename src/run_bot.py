@@ -153,13 +153,32 @@ async def _handle_game_finished(payload: dict) -> None:
             logger.warning("Не удалось отправить результат игры в чат %s", chat_id)
 
 
+async def start_notify_consumer() -> None:
+    """Внешняя шина уведомлений (любой сервис -> Telegram). Не мешает боту."""
+    try:
+        from redis import asyncio as aredis
+
+        from messaging.notify_bus import NotifyConsumer
+
+        consumer = NotifyConsumer(
+            bot, settings, lambda: aredis.Redis(**settings.REDIS_CREDENTIALS)
+        )
+        await consumer.run()
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("notify bus: потребитель остановлен")
+
+
 async def on_startup() -> None:
     bus_task = asyncio.create_task(start_bus_consumer())
     bot_task = asyncio.create_task(start_bot())
     cleaner_task = asyncio.create_task(auto_delete_service.run_cleaner())
+    notify_task = asyncio.create_task(start_notify_consumer())
     try:
         await asyncio.gather(bot_task, cleaner_task)
     finally:
+        notify_task.cancel()
         bus_task.cancel()
         try:
             await bus_task

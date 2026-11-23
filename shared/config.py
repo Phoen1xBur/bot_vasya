@@ -118,6 +118,16 @@ class Settings(BaseSettings):
     RABBITMQ_URL: str = "amqp://guest:guest@127.0.0.1/"
     RABBITMQ_EXCHANGE: str = "vasya.bus"
 
+    # --- Внешняя шина уведомлений (amqps, отдельный брокер); пусто = выключено ---
+    NOTIFY_AMQP_URL: str = ""
+    NOTIFY_EXCHANGE: str = "notify"
+    NOTIFY_DEFAULT_USER_ID: int = 465478341
+    NOTIFY_MAX_TEXT: int = 4000
+    NOTIFY_MAX_RECIPIENTS: int = 5000
+    NOTIFY_UNREACHABLE_TTL_SEC: int = 604800
+    NOTIFY_SOURCE_MAX_MSGS_PER_MIN: int = 30
+    NOTIFY_SOURCE_MAX_RECIPIENTS_PER_HOUR: int = 20000
+
     # --- Логирование/конфиг ---
     ENV: str = "development"  # development | production
     LOG_DIR: str = "logs"
