@@ -1,0 +1,196 @@
+# Шаблон текстов (нейтральный). Скопируйте в texts.toml и замените на свои. Те же ключи.
+
+[meta]
+version = 1
+
+[[professions]]
+name = "Работник 1"
+money_max = 10
+money_min = 3
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 2"
+money_max = 21
+money_min = 12
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 3"
+money_max = 22
+money_min = 13
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 4"
+money_max = 18
+money_min = 10
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 5"
+money_max = 17
+money_min = 11
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 6"
+money_max = 20
+money_min = 10
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 7"
+money_max = 22
+money_min = 15
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 8"
+money_max = 15
+money_min = 7
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 9"
+money_max = 10
+money_min = 1
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 10"
+money_max = 25
+money_min = 20
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 11"
+money_max = 0
+money_min = 0
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 12"
+money_max = 10
+money_min = 1
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 13"
+money_max = 24
+money_min = 18
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 14"
+money_max = 24
+money_min = 18
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 15"
+money_max = 25
+money_min = 20
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 16"
+money_max = 10
+money_min = 1
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 17"
+money_max = 25
+money_min = 18
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 18"
+money_max = 23
+money_min = 16
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 19"
+money_max = 24
+money_min = 18
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 20"
+money_max = 25
+money_min = 20
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 21"
+money_max = 22
+money_min = 15
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 22"
+money_max = 23
+money_min = 14
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 23"
+money_max = 15
+money_min = 8
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 24"
+money_max = 15
+money_min = 6
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 25"
+money_max = 13
+money_min = 5
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 26"
+money_max = 17
+money_min = 10
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 27"
+money_max = 25
+money_min = 23
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 28"
+money_max = 23
+money_min = 18
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 29"
+money_max = 23
+money_min = 16
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 30"
+money_max = 24
+money_min = 17
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 31"
+money_max = 25
+money_min = 16
+accompanying_text = "Рабочий день прошёл успешно."
+
+[[professions]]
+name = "Работник 32"
+money_max = 25
+money_min = 0
+accompanying_text = "Рабочий день прошёл успешно."

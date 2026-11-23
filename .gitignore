@@ -47,3 +47,6 @@ src_fastapi/webapp/static/dist/
 .ruff_cache/
 htmlcov/
 .coverage
+
+# Локальные тексты бота (не в git)
+texts.toml
