@@ -4,6 +4,7 @@
 Внутренняя шина Васи (`vasya.bus`) отдельная и не затрагивается.
 
 - Endpoint: `amqps://api.vasyafun.ru:5671`, vhost `/notify` (только TLS, порт 5672/15672 снаружи закрыты)
+- Внутри 80.74 (docker-сеть `mq`): `amqp://…@notify-bus:5672` без TLS, наружу 5672 не опубликован. Этот же брокер держит vhost `/vasya` для внутренних событий Васи (`vasya.bus`, пользователь `vasya-internal`).
 - Exchange: `notify` (topic), routing key: `send.<имя_сервиса>`
 - У каждого сервиса свой пользователь, права только на публикацию в `notify`.
   Выдача: админ на 80.74 создаёт `rabbitmqctl add_user <svc> <pass>` и

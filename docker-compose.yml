@@ -10,10 +10,11 @@ services:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-vasya} -d ${DB_NAME:-bot_vasya}"]
-      interval: 2s
-      timeout: 3s
-      retries: 5
-      start_period: 5s
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
 
   redis:
     image: redis:7-alpine
@@ -23,25 +24,11 @@ services:
       - redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 2s
-      timeout: 2s
-      retries: 5
-      start_period: 2s
-
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine
-    restart: unless-stopped
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    volumes:
-      - rabbitdata:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 3s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+      start_interval: 2s
 
   api:
     build:
@@ -53,7 +40,6 @@ services:
       - DB_HOST=postgres
       - DB_PORT=5432
       - REDIS_HOST=redis
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq/
       - API_HOST=0.0.0.0
       - API_PORT=8000
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
@@ -64,18 +50,20 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+    networks:
+      - default
+      - mq
     expose:
       - "8000"
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 3s
 
   bot:
     build:
@@ -87,7 +75,6 @@ services:
       - DB_HOST=postgres
       - DB_PORT=5432
       - REDIS_HOST=redis
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq/
     volumes:
       - ./texts.toml:/app/texts.toml:ro
     depends_on:
@@ -95,8 +82,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+    networks:
+      - default
+      - mq
     healthcheck:
       # python:*-slim has no procps/pgrep — check PID1 cmdline instead
       test:
@@ -106,10 +94,11 @@ services:
           "-c",
           "import pathlib,sys; sys.exit(0 if b'run_bot' in pathlib.Path('/proc/1/cmdline').read_bytes() else 1)",
         ]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 30s
+      start_interval: 3s
 
   nginx:
     profiles: ["edge"]
@@ -129,5 +118,10 @@ services:
 volumes:
   pgdata:
   redisdata:
-  rabbitdata:
   nginxlogs:
+
+# Shared RabbitMQ lives in /root/notify-bus (container rabbitmq, alias notify-bus).
+# Vasya uses vhost /vasya; RABBITMQ_URL is set in .env on the server.
+networks:
+  mq:
+    external: true
